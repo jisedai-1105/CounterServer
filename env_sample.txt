@@ -1,0 +1,4 @@
+DB_NAME = "data_store.db"
+PORT_NO = 8765
+LOG_DIR = "/app"
+LOG_NAME = "server.log"

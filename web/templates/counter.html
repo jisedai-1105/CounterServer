@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div style="padding:20px;">
+        <h1>Counter</h1>
+        <div id="counter-display" style="text-align: center; font-size: 30em; margin-bottom: 20px;border:1px solid #000;">---</div>
+        <button onclick="ResetCounter()" style="font-size: 1.5em; padding: 10px 20px;">Reset</button>
+        <button onclick="CounterUpdate()" style="font-size: 1.5em; padding: 10px 20px;">Update</button>
+    </div>
+
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script>
+
+        //------------------------------
+        // WebSocket関連
+        //------------------------------
+
+        //　リセット用のWebSocket接続を確立
+        const WebSocketObj = new WebSocket("{{ SERVER_WS_URL }}");
+        WebSocketObj.onopen = () => {
+            console.log('Reset用のWebSocket接続が確立されました。');
+            //カウントの初期表示
+            CounterUpdate();
+        };
+
+        // WebSocketの受信設定
+        WebSocketObj.onmessage = (event) => {
+            try {
+                // 1. 受信したデータ（文字列）をオブジェクトに変換
+                const data = JSON.parse(event.data);
+
+                // 2. メッセージの種類（type）を確認
+                if (data.type === 'counter') {
+                    const counterValue = data.value;
+                    
+                    // 3. 画面上の要素に反映（例: id="counter-display" の要素を書き換える場合）
+                    console.log('カウンター更新:', counterValue);
+                    const displayElement = document.getElementById('counter-display');
+                    if (displayElement) {
+                        displayElement.innerText = counterValue;
+                    }
+                }
+            } catch (error) {
+                console.error('JSON解析エラー:', error);
+            }
+        };
+
+        //------------------------------
+        // サーバにWebSocketで画面のカウントを更新する
+        //------------------------------
+        function CounterUpdate() {
+            if (WebSocketObj.readyState === WebSocket.OPEN) {
+                const data = { type: "update_counter" };
+                WebSocketObj.send(JSON.stringify(data));
+                console.log("更新コマンドを送信しました。");
+            } else {
+                console.error("Update用のWebSocket接続が開いていません。");
+            }
+        }
+
+        //------------------------------
+        // カウンターをリセットする関数
+        //------------------------------
+        function ResetCounter() {
+            if(confirm("カウンターをリセットしてもよろしいですか？")){
+                if (WebSocketObj.readyState === WebSocket.OPEN) {
+                    const data = { type: "reset" };
+                    WebSocketObj.send(JSON.stringify(data));
+                    console.log("リセットコマンドを送信しました。");
+                } else {
+                    console.error("Reset用のWebSocket接続が開いていません。");
+                }
+            }
+        }
+
+    </script>
+{% endblock %}

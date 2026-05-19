@@ -1,0 +1,2 @@
+PORT_NO=5000
+SERVER_WS_URL='ws://localhost:8765'
