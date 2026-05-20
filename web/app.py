@@ -19,4 +19,4 @@ def home():
     return render_template('home.html')
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', debug=True, port=PORT_NO)
+    socketio.run(app, host='0.0.0.0', debug=True, port=PORT_NO, allow_unsafe_werkzeug=True)
