@@ -2,10 +2,22 @@
 
 {% block content %}
     <div style="padding:20px;">
-        <h1>Counter</h1>
-        <div id="counter-display" style="text-align: center; font-size: 30em; margin-bottom: 20px;border:1px solid #000;">---</div>
-        <button onclick="ResetCounter()" style="font-size: 1.5em; padding: 10px 20px;">Reset</button>
-        <button onclick="CounterUpdate()" style="font-size: 1.5em; padding: 10px 20px;">Update</button>
+        <h2>Counter</h2>
+
+        <div style="font-size: 2em;">レーン：1</div>
+        <div id="cntdisp-1" style="text-align: center; font-size: 13em; margin-bottom: 10px;border:1px solid #000;">---</div>
+        <div style="text-align: center;">
+            <button onclick="ResetCounter(1)" style="font-size: 1.5em; padding: 10px 20px;">Reset</button>
+            <button onclick="CounterUpdate(1)" style="font-size: 1.5em; padding: 10px 20px;">Update</button>
+        </div>
+
+        <div style="font-size: 2em;">レーン：2</div>
+        <div id="cntdisp-2" style="text-align: center; font-size: 13em; margin-bottom: 10px;border:1px solid #000;">---</div>
+        <div style="text-align: center;">
+            <button onclick="ResetCounter(2)" style="font-size: 1.5em; padding: 10px 20px;">Reset</button>
+            <button onclick="CounterUpdate(2)" style="font-size: 1.5em; padding: 10px 20px;">Update</button>
+        </div>
+
     </div>
 
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
@@ -20,7 +32,8 @@
         WebSocketObj.onopen = () => {
             console.log('Reset用のWebSocket接続が確立されました。');
             //カウントの初期表示
-            CounterUpdate();
+            CounterUpdate(1);
+            CounterUpdate(2);
         };
 
         // WebSocketの受信設定
@@ -32,10 +45,17 @@
                 // 2. メッセージの種類（type）を確認
                 if (data.type === 'counter') {
                     const counterValue = data.value;
+                    const no = data.no; 
+                    let setNo = "";
+                    if(no === 1){
+                        setNo = "1";
+                    }else if(no === 2){
+                        setNo = "2";
+                    }
                     
-                    // 3. 画面上の要素に反映（例: id="counter-display" の要素を書き換える場合）
-                    console.log('カウンター更新:', counterValue);
-                    const displayElement = document.getElementById('counter-display');
+                    // 3. 画面上の要素に反映（例: id="cntdisp-1" の要素を書き換える場合）
+                    console.log(`カウンター更新: 'No': ${no}, 'Value': ${counterValue}`);
+                    const displayElement = document.getElementById(`cntdisp-${setNo}`);
                     if (displayElement) {
                         displayElement.innerText = counterValue;
                     }
@@ -48,9 +68,9 @@
         //------------------------------
         // サーバにWebSocketで画面のカウントを更新する
         //------------------------------
-        function CounterUpdate() {
+        function CounterUpdate(No) {
             if (WebSocketObj.readyState === WebSocket.OPEN) {
-                const data = { type: "update_counter" };
+                const data = { type: "update_counter", no: No };
                 WebSocketObj.send(JSON.stringify(data));
                 console.log("更新コマンドを送信しました。");
             } else {
@@ -61,10 +81,10 @@
         //------------------------------
         // カウンターをリセットする関数
         //------------------------------
-        function ResetCounter() {
+        function ResetCounter(No) {
             if(confirm("カウンターをリセットしてもよろしいですか？")){
                 if (WebSocketObj.readyState === WebSocket.OPEN) {
-                    const data = { type: "reset" };
+                    const data = { type: "reset", no: No };
                     WebSocketObj.send(JSON.stringify(data));
                     console.log("リセットコマンドを送信しました。");
                 } else {

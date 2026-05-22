@@ -20,18 +20,19 @@ LOG = clsLog.AppLogger(log_dir=os.getenv("LOG_DIR"), log_name=os.getenv("LOG_NAM
 connected_clients = set()
 
 # --- ブラウザ更新通知関数（WebSocket版） ---
-async def notify_update_socket():
+async def notify_update_socket(No):
 
     try:
         if not connected_clients:
             return
         
-        counter_value = get_active_counter()
+        counter_value = get_active_counter(No)
         
         # 送信するメッセージの作成
         message = json.dumps({
             "type": "counter",
-            "value": counter_value
+            "no": No,
+            "value": counter_value,
         })
 
         # 全クライアントに一斉送信
@@ -51,6 +52,7 @@ def init_db():
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS measurements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                no INTEGER NOT NULL,
                 val INTEGER NOT NULL,
                 savetime TIMESTAMP NOT NULL,
                 is_active BOOLEAN DEFAULT 1
@@ -60,14 +62,14 @@ def init_db():
     conn.close()
 
 # --- データ保存関数 ---
-def save_to_db(value):
+def save_to_db(no,value):
     try:
         with sqlite3.connect(DB_NAME) as conn:
             cursor = conn.cursor()
             now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             cursor.execute(
-                "INSERT INTO measurements (val, savetime, is_active) VALUES (?, ?, ?)",
-                (value, now, True)
+                "INSERT INTO measurements (no, val, savetime, is_active) VALUES (?, ?, ?, ?)",
+                (no, value, now, True)
             )
             conn.commit()
             LOG.info(f"Saved: {value} at {now}")
@@ -77,12 +79,12 @@ def save_to_db(value):
         conn.close()
 
 # --- カウンターリセット関数---
-def reset_counter():
+def reset_counter(No):
     try:
         with sqlite3.connect(DB_NAME) as conn:
             cursor = conn.cursor()
-            sql = "UPDATE measurements SET is_active = 0 WHERE is_active = 1"
-            cursor.execute(sql)
+            sql = "UPDATE measurements SET is_active = 0 WHERE is_active = 1 AND no = ?"
+            cursor.execute(sql, (No,))
             conn.commit()
             LOG.info(f"Counter Reset")
     except Exception as e:
@@ -91,13 +93,13 @@ def reset_counter():
         conn.close()
 
 # --- アクティブなカウンターの取得関数 ---
-def get_active_counter():
+def get_active_counter(No):
     try:
         with sqlite3.connect(DB_NAME) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            sql = "SELECT IFNULL(sum(val), 0) AS total FROM measurements WHERE is_active = 1"
-            cursor.execute(sql)
+            sql = "SELECT IFNULL(sum(val), 0) AS total FROM measurements WHERE is_active = 1 AND no = ?"
+            cursor.execute(sql, (No,))
             result = cursor.fetchone()
             return result["total"] if result else 0
 
@@ -115,39 +117,43 @@ async def handler(websocket):
             try:
                 data = json.loads(message)
                 DataType = data.get("type")
+                No = data.get("no")
 
                 ###################
                 #カウント
                 ###################
                 if DataType == "counter":
                     number = data.get("value")
-                    save_to_db(number)
+                    save_to_db(No, number)
                     response = {
                                 "type": "counter",
-                                "value": number
+                                "no": No,
+                                "value": number,
                             }
                     await websocket.send(json.dumps(response))
-                    await notify_update_socket()  # ブラウザ更新通知
+                    await notify_update_socket(No)  # ブラウザ更新通知
 
                 ###################
                 #カウントのリセット
                 ###################
                 if DataType == "reset":
-                    reset_counter()
+                    reset_counter(No)
                     response = {
                                 "type": "reset",
+                                "no": No,
                                 "value": "Counter reset."
                             }
                     await websocket.send(json.dumps(response))
-                    await notify_update_socket()  # ブラウザ更新通知
+                    await notify_update_socket(No)  # ブラウザ更新通知
 
                 ###################
                 #カウントの取得
                 ###################
                 if DataType == "get_counter":
-                    counter_value = get_active_counter()
+                    counter_value = get_active_counter(No)
                     response = {
                                 "type": "counter",
+                                "no": No,
                                 "value": counter_value
                             }
                     await websocket.send(json.dumps(response))
@@ -158,10 +164,11 @@ async def handler(websocket):
                 if DataType == "update_counter":
                     response = {
                                 "type": "update_counter",
-                                "value": "update_counter."
+                                "no": No,
+                                "value": "update_counter",
                             }
                     await websocket.send(json.dumps(response))
-                    await notify_update_socket()  # ブラウザ更新通知
+                    await notify_update_socket(No)  # ブラウザ更新通知
 
             except (ValueError, TypeError):
                 response = {
@@ -184,8 +191,8 @@ async def main():
     init_db()
     
     # サーバーを起動し、そのオブジェクトを保持
-    async with websockets.serve(handler, "localhost", PORT_NO):
-        LOG.info(f"WebSocket Server started on ws://localhost:{PORT_NO} ")
+    async with websockets.serve(handler, "0.0.0.0", PORT_NO):
+        LOG.info(f"WebSocket Server started on ws://0.0.0.0:{PORT_NO} ")
         LOG.info("Press Ctrl+C to stop the server.")
         
         try:
