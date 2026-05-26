@@ -3,7 +3,7 @@ import websockets
 import json
 
 async def send_data():
-    uri = "ws://192.168.3.136:8765"
+    uri = "ws://localhost:8765"
     async with websockets.connect(uri) as websocket:
         
         SendData = {"type": "counter","no": 2, "value": 1} # 送信するデータ
