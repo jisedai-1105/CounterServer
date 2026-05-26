@@ -219,3 +219,8 @@ __marimo__/
 
 # Database files
 *.db
+
+# Excelの一時ファイルを割愛
+~$*.xlsx
+~$*.xls
+~$*.xlsm
