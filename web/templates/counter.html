@@ -1,23 +1,51 @@
 {% extends "base.html" %}
 
 {% block content %}
+    <style>
+        .LineContener {
+            display:flex;
+            flex-direction: column;
+            width: 400px;
+        }
+        .form-label {
+            font-size: 1.5em
+        }
+        .form-counter {
+            font-size: 13em;
+            margin-bottom: 10px;
+            border: 1px solid #000;
+            text-align: center;
+        }
+        .btn-container {
+            text-align: center;
+        }
+        .btn-btn{
+            font-size: 1.5em;
+            padding: 10px 20px;
+        }
+        .flex {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 20px;
+        }
+    </style>
     <div style="padding:20px;">
         <h2>Counter</h2>
+        <div class="flex">
 
-        <div style="font-size: 2em;">レーン：1</div>
-        <div id="cntdisp-1" style="text-align: center; font-size: 13em; margin-bottom: 10px;border:1px solid #000;">---</div>
-        <div style="text-align: center;">
-            <button onclick="ResetCounter(1)" style="font-size: 1.5em; padding: 10px 20px;">Reset</button>
-            <button onclick="CounterUpdate(1)" style="font-size: 1.5em; padding: 10px 20px;">Update</button>
+            {% for id in range(1, 20) %}
+            <div class="LineContener">
+                <div class="form-label">レーン：{{ id }}</div>
+                <div id="cntdisp-{{ id }}" class="form-counter">---</div>
+                <div class="btn-container">
+                    <button class="btn-btn" onclick="ResetCounter({{ id }})">Reset</button>
+                    <button class="btn-btn" onclick="CounterUpdate({{ id }})">Update</button>
+                </div>
+            </div>
+            {% endfor %}
+
         </div>
-
-        <div style="font-size: 2em;">レーン：2</div>
-        <div id="cntdisp-2" style="text-align: center; font-size: 13em; margin-bottom: 10px;border:1px solid #000;">---</div>
-        <div style="text-align: center;">
-            <button onclick="ResetCounter(2)" style="font-size: 1.5em; padding: 10px 20px;">Reset</button>
-            <button onclick="CounterUpdate(2)" style="font-size: 1.5em; padding: 10px 20px;">Update</button>
-        </div>
-
     </div>
 
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
