@@ -2,3 +2,15 @@ DB_NAME = "data_store.db"
 PORT_NO = 8765
 LOG_DIR = "/app"
 LOG_NAME = "server.log"
+
+# 距離のテーブルを参照するときの時間間隔（秒）
+# 現時刻よりこの時間だけ前のデータを参照する
+READ_TIME = 10
+
+# 距離と経過秒の初期値
+INIT_DISTANCE = 5.0
+INIT_SEC = 10.0
+
+# SlackのWebhook URL
+SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/*****"
+SLACK_SEND_INTERVAL = 60   # Slackへの通知の最小間隔（秒）
