@@ -523,10 +523,15 @@ async def handler(websocket):
 # --- メイン関数 ---
 async def main():
 
+    LOG.info("■" * 20)
+    LOG.info("Server started.")
+    LOG.info("■" * 20)
+
     init_db_dist()
     
     # サーバーを起動し、そのオブジェクトを保持
     async with websockets.serve(handler, "0.0.0.0", PORT_NO):
+
         LOG.info(f"WebSocket Server started on ws://0.0.0.0:{PORT_NO} ")
         LOG.info("Press Ctrl+C to stop the server.")
         
@@ -539,8 +544,10 @@ async def main():
 
     close_db() 
 
-    LOG.info("\nServer stopped.")
-    
+    LOG.info("■" * 20)
+    LOG.info("Server stopped.")
+    LOG.info("■" * 20)
+
 if __name__ == "__main__":
     try:
 
@@ -571,4 +578,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         # Ctrl+Cによるエラー出力をここで食い止める
         close_db() 
-        LOG.info("\nServer stopped.")
+        LOG.info("■" * 20)
+        LOG.info("Server stopped.")
+        LOG.info("■" * 20)
