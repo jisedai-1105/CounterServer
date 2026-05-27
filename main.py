@@ -513,12 +513,13 @@ async def handler(websocket):
                 await websocket.send(json.dumps(response))
 
     except websockets.exceptions.ConnectionClosed:
-        LOG.info("Client connection closed normally.")
+        #LOG.info("Client connection closed normally.")
+        pass
     except Exception as e:
         LOG.error(f"Handler error: {e}")
     finally:
         connected_clients.remove(websocket)
-        LOG.info(f"Client disconnected. Total clients: {len(connected_clients)}")
+        #LOG.info(f"Client disconnected. Total clients: {len(connected_clients)}")
 
 # --- メイン関数 ---
 async def main():
