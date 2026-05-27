@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <style>
+        .LineContener {
+            display:flex;
+            flex-direction: column;
+            width: 400px;
+        }
+        .form-label {
+            font-size: 1.5em
+        }
+        .form-counter {
+            font-size: 6em;
+            margin-bottom: 10px;
+            border: 1px solid #000;
+            text-align: center;
+        }
+        .btn-container {
+            text-align: center;
+        }
+        .btn-btn{
+            font-size: 1.5em;
+            padding: 10px 20px;
+            display: none;
+        }
+        .flex {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 20px;
+        }
+        .alert-full-bak{
+            background-color: red;
+        }
+        .label-cm{
+            font-size: 0.2em;
+        }
+        .env-container {
+            font-size: 1.3em;
+            text-align: center;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        .inp-env {
+            font-size: 1.3em;
+            padding: 5px;
+            margin-right: 15px;
+            width: 50px;
+            text-align: right;
+        }
+        .btn-setenv {
+            font-size: 1.0em;
+            width: 80px;
+        }
+
+    </style>
+    <div style="padding:20px;">
+        <h2>Distance</h2>
+        <div class="flex">
+
+            {% for id in range(1, LINE_MAX + 1) %}
+            <div class="LineContener">
+                <div class="form-label">レーン：{{ id }}</div>
+                <div id="cntdisp-{{ id }}" class="form-counter">---</div>
+                <div class="btn-container">
+                    <button class="btn-btn" onclick="DistUpdate({{ id }})">Update</button>
+                </div>
+                <div class="env-container">
+                    距離：<input class="inp-env" type="number" min="1" max="30" id="dist-input-{{ id }}" placeholder="" onfocus="this.select()">
+                    秒：<input class="inp-env" type="number" min="1" max="60" id="time-input-{{ id }}" placeholder="" onfocus="this.select()">
+                    <button class="btn-setenv" onclick="SetEnv({{ id }})">Set</button>
+                </div>
+            </div>
+            {% endfor %}
+
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script>
+
+        //------------------------------
+        // WebSocket関連
+        //------------------------------
+
+        //　リセット用のWebSocket接続を確立
+        const WebSocketObj = new WebSocket("{{ SERVER_WS_URL }}");
+        WebSocketObj.onopen = () => {
+            console.log('Reset用のWebSocket接続が確立されました。');
+            //カウントの初期表示
+            {% for id in range(1, LINE_MAX + 1) %}
+                DistUpdate({{ id }});
+                EnvUpdate({{ id }});
+            {% endfor %}
+        };
+
+        // WebSocketの受信設定
+        WebSocketObj.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+
+                // 距離の取得
+                if (data.type === 'distance') {
+
+                    const alert = data.alert;
+                    const no = data.no; 
+                    const dist = isNaN(data.dist) || data.dist === '' ? data.dist : Number(data.dist).toFixed(2);
+                    
+                    console.log(`距離の更新: 'No': ${no}, 'dist': ${dist}, 'alert': ${alert}`);
+                    const displayElement = document.getElementById(`cntdisp-${no}`);
+                    if (displayElement) {
+                        displayElement.innerHTML = dist + " <span class='label-cm'>cm</span>";
+                        if (alert == "full") {
+                            displayElement.classList.add('alert-full-bak');
+                        } else {
+                            displayElement.classList.remove('alert-full-bak');
+                        }
+                    }
+                }
+
+                // 環境設定の取得
+                if (data.type === 'distenv') {
+                    const no = data.no; 
+                    const dist = data.dist;
+                    const sec = data.sec;
+                    
+                    console.log(`環境設定の更新: 'No': ${no}, 'dist': ${dist}, 'sec': ${sec}`);
+                    const distInput = document.getElementById(`dist-input-${no}`);
+                    const timeInput = document.getElementById(`time-input-${no}`);
+                    if (distInput && timeInput) {
+                        distInput.value = dist;
+                        timeInput.value = sec;
+                    }
+                }
+            } catch (error) {
+                console.error('JSON解析エラー:', error);
+            }
+        };
+
+        //------------------------------
+        // サーバにWebSocketで画面のカウントを更新する
+        //------------------------------
+        function DistUpdate(No) {
+            if (WebSocketObj.readyState === WebSocket.OPEN) {
+                const data = { type: "getdistance", no: No };
+                WebSocketObj.send(JSON.stringify(data));
+                console.log("更新コマンドを送信しました。");
+            } else {
+                console.error("Update用のWebSocket接続が開いていません。");
+            }
+        }
+
+        //------------------------------
+        // サーバにWebSocketで環境設定を送信する
+        //------------------------------
+        function EnvUpdate(No) {
+            if (WebSocketObj.readyState === WebSocket.OPEN) {
+                const data = { 
+                    type: "getenv", 
+                    no: No
+                };
+                WebSocketObj.send(JSON.stringify(data));
+                console.log("環境設定取得コマンドを送信しました。");
+            } else {
+                console.error("Update用のWebSocket接続が開いていません。");
+            }
+        }
+
+        function SetEnv(No) {
+            const distInput = document.getElementById(`dist-input-${No}`);
+            const timeInput = document.getElementById(`time-input-${No}`);
+            const distValue = distInput ? parseInt(distInput.value) : null;
+            const timeValue = timeInput ? parseInt(timeInput.value) : null;
+
+            if (distValue !== null && timeValue !== null) {
+                if (WebSocketObj.readyState === WebSocket.OPEN) {
+                    const data = { 
+                        type: "setenv", 
+                        no: No, 
+                        dist: distValue, 
+                        sec: timeValue 
+                    };
+                    WebSocketObj.send(JSON.stringify(data));
+                    console.log("環境設定送信コマンドを送信しました。");
+                } else {
+                    console.error("Update用のWebSocket接続が開いていません。");
+                }
+            } else {
+                console.error("距離と時間の入力値が正しくありません。");
+            }
+        }
+
+    </script>
+{% endblock %}

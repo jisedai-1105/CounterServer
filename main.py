@@ -74,8 +74,7 @@ async def notify_update_socket_dist(No):
             "type": "distance",
             "no": No,
             "alert": DistData["alert"],
-            "dist": DistData["dist"],
-            "sec": DistData["sec"]
+            "dist": DistData["dist"]
         })
 
         # 全クライアントに一斉送信
@@ -418,13 +417,13 @@ async def handler(websocket):
                     dist = data.get("dist")
                     sec = data.get("sec")
                     save_to_db_dist(No, dist, sec)
-                    notify_update_socket_dist(No)  # ブラウザ更新通知
+                    await notify_update_socket_dist(No)  # ブラウザ更新通知
                 
                 #####################
                 #距離情報をクライアントに返す
                 #####################
                 if DataType == "getdistance":
-                    notify_update_socket_dist(No)  # ブラウザ更新通知
+                    await notify_update_socket_dist(No)  # ブラウザ更新通知
 
                 ######################
                 #距離環境設定の保存
@@ -438,7 +437,7 @@ async def handler(websocket):
                 #距離環境設定の取得
                 #######################
                 if DataType == "getenv":
-                    notify_update_socket_distenv(No)  # ブラウザ更新通知
+                    await notify_update_socket_distenv(No)  # ブラウザ更新通知
 
             except (ValueError, TypeError):
                 response = {
@@ -479,7 +478,7 @@ async def main():
 if __name__ == "__main__":
     try:
 
-        #asyncio.run(main())
+        asyncio.run(main())
 
         #デバッグ用 ----------------------
         #カウンターのリセット
@@ -489,15 +488,15 @@ if __name__ == "__main__":
         #カウントの表示
         #print(get_active_counter())
 
-        init_db_dist()
+        #init_db_dist()
         #               No , 距離 , 経過秒
         #save_to_db_dist(1, 5.0, 4.0)
         #print(get_latest_distance(1))
         #print(ReceiveDistance(1))
         #              No , 距離 , 経過秒
         #SetDistanceEnv(1, 10.0, 5.0)
-        print(GetDistanceEnv(1))
-        close_db()
+        #print(GetDistanceEnv(1))
+        #close_db()
 
     except KeyboardInterrupt:
         # Ctrl+Cによるエラー出力をここで食い止める

@@ -9,10 +9,11 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 load_dotenv()
 SERVER_WS_URL = os.getenv("SERVER_WS_URL")
 PORT_NO = int(os.getenv("PORT_NO"))
+LINE_MAX = int(os.getenv("LINE_MAX"))
 
 @app.route('/')
 def counter():
-    return render_template('counter.html', SERVER_WS_URL=SERVER_WS_URL)
+    return render_template('distance.html', SERVER_WS_URL=SERVER_WS_URL, LINE_MAX=LINE_MAX)
 
 @app.route('/home')
 def home():
