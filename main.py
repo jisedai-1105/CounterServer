@@ -7,6 +7,7 @@ import json
 import clsLog
 from dotenv import load_dotenv
 import os
+import requests
 
 load_dotenv()
 
@@ -14,9 +15,10 @@ load_dotenv()
 DB_NAME = os.getenv("DB_NAME")
 PORT_NO = int(os.getenv("PORT_NO"))
 READ_TIME = int(os.getenv("READ_TIME"))
-
 INIT_DISTANCE = float(os.getenv("INIT_DISTANCE"))
 INIT_SEC = float(os.getenv("INIT_SEC"))
+SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
+SLACK_SEND_INTERVAL = int(os.getenv("SLACK_SEND_INTERVAL"))
 
 # --- ログ設定 ---
 LOG = clsLog.AppLogger(log_dir=os.getenv("LOG_DIR"), log_name=os.getenv("LOG_NAME"))
@@ -26,6 +28,9 @@ connected_clients = set()
 
 # --- DBのコネクション ---
 db_connect = None
+
+# --- Slackへの最後の通知時間を記録する辞書 ---
+last_sent_times = {}
 
 # --- DBコネクションのクローズ関数 ---
 def close_db():
@@ -254,6 +259,14 @@ def ReceiveDistance(No):
                 "alert": "full", 
                 "dist": latest_dist["dist"], 
             }
+
+            # Slackへの通知の制御
+            current_time = datetime.datetime.now()
+            if No not in last_sent_times or (current_time - last_sent_times[No]).seconds >= SLACK_SEND_INTERVAL:
+                IsSendMsg = SendSlackMessage(f"成型機：{No} が満杯になりました。")
+                if IsSendMsg:
+                    last_sent_times[No] = current_time
+
         else:
             result = {
                 "type": "distance",
@@ -267,6 +280,28 @@ def ReceiveDistance(No):
     except Exception as e:
         LOG.error(f"Database error: {e}")
         raise  # 呼び出し元にエラーを伝える
+
+# --- Slack通知関数 ---
+def SendSlackMessage(message):
+    result = False
+    try:
+        if SLACK_WEBHOOK_URL is None:
+            LOG.warning("SLACK_WEBHOOK_URL が設定されていません。Slack通知をスキップします。")
+            return result
+
+        payload = {"text": message}
+        response = requests.post(SLACK_WEBHOOK_URL, json=payload)
+
+        if response.status_code != 200:
+            LOG.error(f"Failed to send Slack message: {response.status_code} - {response.text}")
+        else:
+            LOG.info("Slack message sent successfully.")
+            result = True
+
+    except Exception as e:
+        LOG.error(f"Error sending Slack message: {e}")
+    
+    return result
 
 # --- 最新の距離情報の取得関数 ---
 def get_latest_distance(No):
