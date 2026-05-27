@@ -181,7 +181,7 @@ def save_to_db(no,value):
         db_connect.commit()
         LOG.info(f"Saved: {value} at {now}")
     except Exception as e:
-        LOG.error(f"Database error: {e}")
+        LOG.error(f"save_to_db() - Database error: {e}")
 
 # --- データ保存関数 ---
 def save_to_db_dist(no,dist,sec):
@@ -196,7 +196,7 @@ def save_to_db_dist(no,dist,sec):
         db_connect.commit()
         LOG.info(f"Saved: dist: {dist}, sec: {sec} at {now}")
     except Exception as e:
-        LOG.error(f"Database error: {e}")
+        LOG.error(f"save_to_db_dist() - Database error: {e}")
 
 # --- カウンターリセット関数---
 def reset_counter(No):
@@ -278,7 +278,7 @@ def ReceiveDistance(No):
         return result
 
     except Exception as e:
-        LOG.error(f"Database error: {e}")
+        LOG.error(f"ReceiveDistance() - Database error: {e}")
         raise  # 呼び出し元にエラーを伝える
 
 # --- Slack通知関数 ---
@@ -332,7 +332,7 @@ def get_latest_distance(No):
         return Result
 
     except Exception as e:
-        LOG.error(f"Database error: {e}")
+        LOG.error(f"get_latest_distance() - Database error: {e}")
         raise  # 呼び出し元にエラーを伝える
 
 # --- 距離情報の取得処理 ---
@@ -352,7 +352,7 @@ def GetDistanceEnv(No):
         return result_dict
 
     except Exception as e:
-        LOG.error(f"Database error: {e}")
+        LOG.error(f"GetDistanceEnv() - Database error: {e}")
         raise  # 呼び出し元にエラーを伝える
 
 # --- 距離環境設定の保存処理 ---
@@ -390,6 +390,7 @@ async def handler(websocket):
     try:
         async for message in websocket:
             try:
+
                 data = json.loads(message)
                 DataType = data.get("type")
                 No = data.get("no")
@@ -452,12 +453,23 @@ async def handler(websocket):
                     dist = data.get("dist")
                     sec = data.get("sec")
                     save_to_db_dist(No, dist, sec)
+                    response = {
+                                "type": "dist",
+                                "no": No,
+                                "dist": dist,
+                                "sec": sec
+                            }
+                    await websocket.send(json.dumps(response))
                     await notify_update_socket_dist(No)  # ブラウザ更新通知
                 
                 #####################
                 #距離情報をクライアントに返す
                 #####################
                 if DataType == "getdistance":
+                    response = {
+                                "type": "getdistance",
+                            }
+                    await websocket.send(json.dumps(response))
                     await notify_update_socket_dist(No)  # ブラウザ更新通知
 
                 ######################
@@ -467,12 +479,24 @@ async def handler(websocket):
                     dist = data.get("dist")
                     sec = data.get("sec")
                     SetDistanceEnv(No, dist, sec)
+                    response = {
+                                "type": "setenv",
+                                "no": No,
+                                "dist": dist,
+                                "sec": sec,
+                            }
+                    await websocket.send(json.dumps(response))
                 
                 #######################
                 #距離環境設定の取得
                 #######################
                 if DataType == "getenv":
                     await notify_update_socket_distenv(No)  # ブラウザ更新通知
+                    response = {
+                                "type": "getenv",
+                                "no": No,
+                            }
+                    await websocket.send(json.dumps(response))
 
             except (ValueError, TypeError):
                 response = {
@@ -482,10 +506,8 @@ async def handler(websocket):
                 await websocket.send(json.dumps(response))
 
     except websockets.exceptions.ConnectionClosed:
-        close_db() 
         LOG.info("Client connection closed normally.")
     except Exception as e:
-        close_db() 
         LOG.error(f"Handler error: {e}")
     finally:
         connected_clients.remove(websocket)
@@ -524,6 +546,9 @@ if __name__ == "__main__":
         #print(get_active_counter())
 
         #init_db_dist()
+        
+        #print(GetDistanceEnv(1))
+
         #               No , 距離 , 経過秒
         #save_to_db_dist(1, 5.0, 4.0)
         #print(get_latest_distance(1))
@@ -531,6 +556,7 @@ if __name__ == "__main__":
         #              No , 距離 , 経過秒
         #SetDistanceEnv(1, 10.0, 5.0)
         #print(GetDistanceEnv(1))
+        
         #close_db()
 
     except KeyboardInterrupt:
