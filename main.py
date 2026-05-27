@@ -35,9 +35,12 @@ last_sent_times = {}
 # --- DBコネクションのクローズ関数 ---
 def close_db():
     global db_connect
-    if db_connect:
-        db_connect.close()
-        db_connect = None
+    try:
+        if db_connect:
+            db_connect.close()
+            db_connect = None
+    except Exception as e:
+        LOG.error(f"close_db() - Error: {e}")
 
 # --- ブラウザ更新通知関数（WebSocket版） ---
 async def notify_update_socket(No):
@@ -63,7 +66,7 @@ async def notify_update_socket(No):
         )
 
     except Exception as e:
-        LOG.error(f"notify_update(): {e}")
+        LOG.error(f"notify_update() - Error: {e}")
 
 # --- ブラウザ更新通知関数（WebSocket版） ---
 async def notify_update_socket_dist(No):
@@ -90,7 +93,7 @@ async def notify_update_socket_dist(No):
         )
 
     except Exception as e:
-        LOG.error(f"notify_update_socket_dist(): {e}")
+        LOG.error(f"notify_update_socket_dist() - Error: {e}")
 
 # --- ブラウザ更新通知関数（WebSocket版） ---
 async def notify_update_socket_distenv(No):
@@ -117,7 +120,7 @@ async def notify_update_socket_distenv(No):
         )
 
     except Exception as e:
-        LOG.error(f"notify_update_socket_dist(): {e}")
+        LOG.error(f"notify_update_socket_dist() - Error: {e}")
 
 # --- データベース初期化関数 ---
 def init_db():
@@ -141,32 +144,36 @@ def init_db():
 # --- データベース初期化関数(距離計測版) ---
 def init_db_dist():
     global db_connect
+    try:
 
-    if db_connect is None:
-        db_connect = sqlite3.connect(DB_NAME, check_same_thread=False)
+        if db_connect is None:
+            db_connect = sqlite3.connect(DB_NAME, check_same_thread=False)
 
-    cursor = db_connect.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS distancements (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            no INTEGER NOT NULL,
-            dist REAL NOT NULL,
-            sec REAL NOT NULL,
-            savetime TIMESTAMP NOT NULL
-        )
-    ''')
-    db_connect.commit()
+        cursor = db_connect.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS distancements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                no INTEGER NOT NULL,
+                dist REAL NOT NULL,
+                sec REAL NOT NULL,
+                savetime TIMESTAMP NOT NULL
+            )
+        ''')
+        db_connect.commit()
 
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS distanceenv (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            no INTEGER NOT NULL,
-            dist REAL NOT NULL,
-            sec REAL NOT NULL,
-            savetime TIMESTAMP NOT NULL
-        )
-    ''')
-    db_connect.commit()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS distanceenv (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                no INTEGER NOT NULL,
+                dist REAL NOT NULL,
+                sec REAL NOT NULL,
+                savetime TIMESTAMP NOT NULL
+            )
+        ''')
+        db_connect.commit()
+    
+    except Exception as e:
+        LOG.error(f"init_db_dist() - Database error: {e}")
 
 # --- データ保存関数 ---
 def save_to_db(no,value):
@@ -528,10 +535,12 @@ async def main():
             await asyncio.Future() 
         except asyncio.CancelledError:
             # Ctrl+C などによるキャンセルをここでキャッチ
-            LOG.info("Shutting down server...")
+            LOG.info("Shutting down server.")
 
     close_db() 
 
+    LOG.info("\nServer stopped.")
+    
 if __name__ == "__main__":
     try:
 
