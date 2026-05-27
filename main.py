@@ -223,7 +223,7 @@ def get_active_counter(No):
 
     except Exception as e:
         LOG.error(f"Database error: {e}")
-        raise  # 呼び出し元にエラーを伝える
+        #raise  # 呼び出し元にエラーを伝える
 
 # --- 距離情報の取得処理 ---
 def ReceiveDistance(No):
@@ -279,7 +279,7 @@ def ReceiveDistance(No):
 
     except Exception as e:
         LOG.error(f"ReceiveDistance() - Database error: {e}")
-        raise  # 呼び出し元にエラーを伝える
+        #raise  # 呼び出し元にエラーを伝える
 
 # --- Slack通知関数 ---
 def SendSlackMessage(message):
@@ -333,7 +333,7 @@ def get_latest_distance(No):
 
     except Exception as e:
         LOG.error(f"get_latest_distance() - Database error: {e}")
-        raise  # 呼び出し元にエラーを伝える
+        #raise  # 呼び出し元にエラーを伝える
 
 # --- 距離情報の取得処理 ---
 def GetDistanceEnv(No):
@@ -353,7 +353,7 @@ def GetDistanceEnv(No):
 
     except Exception as e:
         LOG.error(f"GetDistanceEnv() - Database error: {e}")
-        raise  # 呼び出し元にエラーを伝える
+        #raise  # 呼び出し元にエラーを伝える
 
 # --- 距離環境設定の保存処理 ---
 def SetDistanceEnv(No, dist, sec):
