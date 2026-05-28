@@ -484,7 +484,7 @@ async def handler(websocket):
                                 "dist": dist,
                                 "sec": sec
                             }
-                    await websocket.send(json.dumps(response))
+                    #await websocket.send(json.dumps(response))
                     await notify_update_socket_dist(No,inserted_id)  # ブラウザ更新通知
                 
                 #####################
@@ -531,13 +531,13 @@ async def handler(websocket):
                 await websocket.send(json.dumps(response))
 
     except websockets.exceptions.ConnectionClosed:
-        LOG.info("Client connection closed normally.")
+        #LOG.info("Client connection closed normally.")
         pass
     except Exception as e:
         LOG.error(f"Handler error: {e}")
     finally:
         connected_clients.remove(websocket)
-        LOG.info(f"Client disconnected. Total clients: {len(connected_clients)}")
+        #LOG.info(f"Client disconnected. Total clients: {len(connected_clients)}")
 
 # --- メイン関数 ---
 async def main():
