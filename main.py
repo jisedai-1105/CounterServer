@@ -209,9 +209,9 @@ def save_to_db_dist(no,dist,sec):
 
         inserted_id = cursor.lastrowid
 
-        LOG.info(f"Saved: id: {inserted_id}, dist: {dist}, sec: {sec} at {now}")
+        LOG.info(f"Saved: id: {inserted_id}, no: {no}, dist: {dist}, sec: {sec} at {now}")
     except Exception as e:
-        LOG.error(f"save_to_db_dist() - Database error: {e}")
+        LOG.error(f"save_to_db_dist() - no: {no}, dist: {dist}, sec: {sec} - Database error: {e}")
 
     return inserted_id
 
