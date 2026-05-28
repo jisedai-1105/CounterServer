@@ -43,39 +43,13 @@ def close_db():
         LOG.error(f"close_db() - Error: {e}")
 
 # --- ブラウザ更新通知関数（WebSocket版） ---
-async def notify_update_socket(No):
-
-    try:
-        if not connected_clients:
-            return
-        
-        counter_value = get_active_counter(No)
-        
-        # 送信するメッセージの作成
-        message = json.dumps({
-            "type": "counter",
-            "no": No,
-            "value": counter_value,
-        })
-
-        # 全クライアントに一斉送信
-        # waitを使って並列に処理すると効率的です
-        await asyncio.gather(
-            *[client.send(message) for client in connected_clients],
-            return_exceptions=True # 一部の送信失敗で全体を止めないため
-        )
-
-    except Exception as e:
-        LOG.error(f"notify_update() - Error: {e}")
-
-# --- ブラウザ更新通知関数（WebSocket版） ---
 async def notify_update_socket_dist(No, inserted_id=""):
 
     try:
         if not connected_clients:
             return
         
-        DistData = ReceiveDistance(No,inserted_id)
+        DistData = await ReceiveDistance(No,inserted_id)
         
         # 送信するメッセージの作成
         message = json.dumps({
@@ -104,7 +78,7 @@ async def notify_update_socket_distenv(No):
         if not connected_clients:
             return
         
-        EnvData = GetDistanceEnv(No)
+        EnvData = await asyncio.to_thread(GetDistanceEnv, No)
         
         # 送信するメッセージの作成
         message = json.dumps({
@@ -123,25 +97,6 @@ async def notify_update_socket_distenv(No):
 
     except Exception as e:
         LOG.error(f"notify_update_socket_dist() - Error: {e}")
-
-# --- データベース初期化関数 ---
-def init_db():
-    global db_connect
-
-    if db_connect is None:
-        db_connect = sqlite3.connect(DB_NAME, check_same_thread=False)
-
-    cursor = db_connect.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS measurements (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            no INTEGER NOT NULL,
-            val INTEGER NOT NULL,
-            savetime TIMESTAMP NOT NULL,
-            is_active BOOLEAN DEFAULT 1
-        )
-    ''')
-    db_connect.commit()
 
 # --- データベース初期化関数(距離計測版) ---
 def init_db_dist():
@@ -173,24 +128,13 @@ def init_db_dist():
             )
         ''')
         db_connect.commit()
-    
+
+        # クライアント増による遅延を完全に防ぐインデックスの追加
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_dist_no_time ON distancements (no, savetime);")
+        db_connect.commit()
+
     except Exception as e:
         LOG.error(f"init_db_dist() - Database error: {e}")
-
-# --- データ保存関数 ---
-def save_to_db(no,value):
-    global db_connect
-    try:
-        cursor = db_connect.cursor()
-        now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        cursor.execute(
-            "INSERT INTO measurements (no, val, savetime, is_active) VALUES (?, ?, ?, ?)",
-            (no, value, now, True)
-        )
-        db_connect.commit()
-        LOG.info(f"Saved: {value} at {now}")
-    except Exception as e:
-        LOG.error(f"save_to_db() - Database error: {e}")
 
 # --- データ保存関数 ---
 def save_to_db_dist(no,dist,sec):
@@ -215,57 +159,13 @@ def save_to_db_dist(no,dist,sec):
 
     return inserted_id
 
-# --- カウンターリセット関数---
-def reset_counter(No):
-    global db_connect
-    try:
-        cursor = db_connect.cursor()
-        sql = "UPDATE measurements SET is_active = 0 WHERE is_active = 1 AND no = ?"
-        cursor.execute(sql, (No,))
-        db_connect.commit()
-        LOG.info(f"Counter Reset")
-    except Exception as e:
-        LOG.error(f"Database error: {e}")
-
-# --- アクティブなカウンターの取得関数 ---
-def get_active_counter(No):
-    global db_connect
-    try:
-        db_connect.row_factory = sqlite3.Row
-        cursor = db_connect.cursor()
-        sql = "SELECT IFNULL(sum(val), 0) AS total FROM measurements WHERE is_active = 1 AND no = ?"
-        cursor.execute(sql, (No,))
-        result = cursor.fetchone()
-        return result["total"] if result else 0
-
-    except Exception as e:
-        LOG.error(f"Database error: {e}")
-        #raise  # 呼び出し元にエラーを伝える
-
 # --- 距離情報の取得処理 ---
-def ReceiveDistance(No, inserted_id=""):
+async def ReceiveDistance(No, inserted_id=""):
     global db_connect
     try:
 
-        Env = GetDistanceEnv(No)
-
-        db_connect.row_factory = sqlite3.Row
-        cursor = db_connect.cursor()
-
-        # 過去READ_TIME秒のデータの内、距離がEnv["dist"]以下のものを合計する
-        sql = """
-            SELECT IFNULL(sum(sec), 0) AS total 
-            FROM distancements 
-            WHERE no = ? 
-            AND dist <= ?
-            AND savetime >= DATETIME('now','localtime', '-' || ? || ' seconds')
-        """
-
-        cursor.execute(sql, (No, Env["dist"], READ_TIME))
-        row = cursor.fetchone()
-        sec = row["total"] if row else 0
-
-        latest_dist = get_latest_distance(No,inserted_id)
+        Env, sec = await asyncio.to_thread(ReceiveDistanceDB, No)
+        latest_dist = await asyncio.to_thread(get_latest_distance, No, inserted_id)
 
         #LOG.info(f"READ_TIME:{READ_TIME}, env.dist:{Env['dist']}, env.sec:{Env['sec']} / total sec: {sec}")
 
@@ -280,7 +180,7 @@ def ReceiveDistance(No, inserted_id=""):
             # Slackへの通知の制御
             current_time = datetime.datetime.now()
             if No not in last_sent_times or (current_time - last_sent_times[No]).seconds >= SLACK_SEND_INTERVAL:
-                IsSendMsg = SendSlackMessage(f"成型機：{No} が満杯になりました。")
+                IsSendMsg = await asyncio.to_thread(SendSlackMessage, f"成型機：{No} が満杯になりました。")
                 if IsSendMsg:
                     last_sent_times[No] = current_time
 
@@ -297,6 +197,24 @@ def ReceiveDistance(No, inserted_id=""):
     except Exception as e:
         LOG.error(f"ReceiveDistance() - Database error: {e}")
         #raise  # 呼び出し元にエラーを伝える
+
+# --- 距離情報の取得処理 ---
+def ReceiveDistanceDB(No):
+    global db_connect
+    Env = GetDistanceEnv(No)
+    db_connect.row_factory = sqlite3.Row
+    cursor = db_connect.cursor()
+    sql = """
+        SELECT IFNULL(sum(sec), 0) AS total 
+        FROM distancements 
+        WHERE no = ? 
+        AND dist <= ?
+        AND savetime >= DATETIME('now','localtime', '-' || ? || ' seconds')
+    """
+    cursor.execute(sql, (No, Env["dist"], READ_TIME))
+    row = cursor.fetchone()
+    sec = row["total"] if row else 0
+    return Env, sec
 
 # --- Slack通知関数 ---
 def SendSlackMessage(message):
@@ -421,63 +339,12 @@ async def handler(websocket):
                 No = data.get("no")
 
                 ###################
-                #カウント
-                ###################
-                if DataType == "counter":
-                    number = data.get("value")
-                    save_to_db(No, number)
-                    response = {
-                                "type": "counter",
-                                "no": No,
-                                "value": number,
-                            }
-                    await websocket.send(json.dumps(response))
-                    await notify_update_socket(No)  # ブラウザ更新通知
-
-                ###################
-                #カウントのリセット
-                ###################
-                if DataType == "reset":
-                    reset_counter(No)
-                    response = {
-                                "type": "reset",
-                                "no": No,
-                                "value": "Counter reset."
-                            }
-                    await websocket.send(json.dumps(response))
-                    await notify_update_socket(No)  # ブラウザ更新通知
-
-                ###################
-                #カウントの取得
-                ###################
-                if DataType == "get_counter":
-                    counter_value = get_active_counter(No)
-                    response = {
-                                "type": "counter",
-                                "no": No,
-                                "value": counter_value
-                            }
-                    await websocket.send(json.dumps(response))
-
-                ###################
-                #カウントの更新
-                ###################
-                if DataType == "update_counter":
-                    response = {
-                                "type": "update_counter",
-                                "no": No,
-                                "value": "update_counter",
-                            }
-                    await websocket.send(json.dumps(response))
-                    await notify_update_socket(No)  # ブラウザ更新通知
-                
-                ###################
                 #距離情報の受信
                 ###################
                 if DataType == "dist":
                     dist = data.get("dist")
                     sec = data.get("sec")
-                    inserted_id = save_to_db_dist(No, dist, sec)
+                    inserted_id = await asyncio.to_thread(save_to_db_dist,No, dist, sec)
                     response = {
                                 "type": "dist",
                                 "no": No,
@@ -503,7 +370,7 @@ async def handler(websocket):
                 if DataType == "setenv":
                     dist = data.get("dist")
                     sec = data.get("sec")
-                    SetDistanceEnv(No, dist, sec)
+                    await asyncio.to_thread(SetDistanceEnv, No, dist, sec)
                     response = {
                                 "type": "setenv",
                                 "no": No,
@@ -581,6 +448,8 @@ if __name__ == "__main__":
         #print(get_active_counter())
 
         #init_db_dist()
+
+        #print(await ReceiveDistance(1))
         
         #print(GetDistanceEnv(1))
 
