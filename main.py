@@ -69,21 +69,23 @@ async def notify_update_socket(No):
         LOG.error(f"notify_update() - Error: {e}")
 
 # --- ブラウザ更新通知関数（WebSocket版） ---
-async def notify_update_socket_dist(No):
+async def notify_update_socket_dist(No, inserted_id=""):
 
     try:
         if not connected_clients:
             return
         
-        DistData = ReceiveDistance(No)
+        DistData = ReceiveDistance(No,inserted_id)
         
         # 送信するメッセージの作成
         message = json.dumps({
-            "type": "distance",
+            "type": "dist",
             "no": No,
             "alert": DistData["alert"],
             "dist": DistData["dist"]
         })
+
+        #LOG.info(f"Sent distance: No={No}, alert={DistData['alert']}, dist={DistData['dist']}")
 
         # 全クライアントに一斉送信
         # waitを使って並列に処理すると効率的です
@@ -192,7 +194,10 @@ def save_to_db(no,value):
 
 # --- データ保存関数 ---
 def save_to_db_dist(no,dist,sec):
+
     global db_connect
+
+    inserted_id = ""
     try:
         cursor = db_connect.cursor()
         now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -201,9 +206,14 @@ def save_to_db_dist(no,dist,sec):
             (no, dist, sec, now)
         )
         db_connect.commit()
-        LOG.info(f"Saved: dist: {dist}, sec: {sec} at {now}")
+
+        inserted_id = cursor.lastrowid
+
+        LOG.info(f"Saved: id: {inserted_id}, dist: {dist}, sec: {sec} at {now}")
     except Exception as e:
         LOG.error(f"save_to_db_dist() - Database error: {e}")
+
+    return inserted_id
 
 # --- カウンターリセット関数---
 def reset_counter(No):
@@ -233,7 +243,7 @@ def get_active_counter(No):
         #raise  # 呼び出し元にエラーを伝える
 
 # --- 距離情報の取得処理 ---
-def ReceiveDistance(No):
+def ReceiveDistance(No, inserted_id=""):
     global db_connect
     try:
 
@@ -255,7 +265,7 @@ def ReceiveDistance(No):
         row = cursor.fetchone()
         sec = row["total"] if row else 0
 
-        latest_dist = get_latest_distance(No)
+        latest_dist = get_latest_distance(No,inserted_id)
 
         #LOG.info(f"READ_TIME:{READ_TIME}, env.dist:{Env['dist']}, env.sec:{Env['sec']} / total sec: {sec}")
 
@@ -311,24 +321,32 @@ def SendSlackMessage(message):
     return result
 
 # --- 最新の距離情報の取得関数 ---
-def get_latest_distance(No):
+def get_latest_distance(No, inserted_id=""):
 
     global db_connect
     try:
         db_connect.row_factory = sqlite3.Row
         cursor = db_connect.cursor()
 
-        sql = '''
-        SELECT * FROM distancements 
-        WHERE 
-        no = ? 
-        AND savetime >= DATETIME('now','localtime', '-' || ? || ' seconds')
-        ORDER BY 
-        savetime DESC 
-        LIMIT 1
-        '''
+        if inserted_id == "":
+            sql = '''
+            SELECT * FROM distancements 
+            WHERE 
+            no = ? 
+            AND savetime >= DATETIME('now','localtime', '-' || ? || ' seconds')
+            ORDER BY 
+            savetime DESC 
+            LIMIT 1
+            '''
+            cursor.execute(sql, (No, READ_TIME))
+        else:
+            sql = '''
+            SELECT * FROM distancements 
+            WHERE 
+            id = ?
+            '''
+            cursor.execute(sql, (inserted_id,))
 
-        cursor.execute(sql, (No, READ_TIME))
         row = cursor.fetchone()
         Result = None
         if row is None:
@@ -459,15 +477,15 @@ async def handler(websocket):
                 if DataType == "dist":
                     dist = data.get("dist")
                     sec = data.get("sec")
-                    save_to_db_dist(No, dist, sec)
+                    inserted_id = save_to_db_dist(No, dist, sec)
                     response = {
                                 "type": "dist",
                                 "no": No,
                                 "dist": dist,
                                 "sec": sec
                             }
-                    await websocket.send(json.dumps(response))
-                    await notify_update_socket_dist(No)  # ブラウザ更新通知
+                    #await websocket.send(json.dumps(response))
+                    await notify_update_socket_dist(No,inserted_id)  # ブラウザ更新通知
                 
                 #####################
                 #距離情報をクライアントに返す
@@ -476,7 +494,7 @@ async def handler(websocket):
                     response = {
                                 "type": "getdistance",
                             }
-                    await websocket.send(json.dumps(response))
+                    #await websocket.send(json.dumps(response))
                     await notify_update_socket_dist(No)  # ブラウザ更新通知
 
                 ######################
@@ -503,7 +521,7 @@ async def handler(websocket):
                                 "type": "getenv",
                                 "no": No,
                             }
-                    await websocket.send(json.dumps(response))
+                    #await websocket.send(json.dumps(response))
 
             except (ValueError, TypeError):
                 response = {
@@ -513,13 +531,13 @@ async def handler(websocket):
                 await websocket.send(json.dumps(response))
 
     except websockets.exceptions.ConnectionClosed:
-        #LOG.info("Client connection closed normally.")
+        LOG.info("Client connection closed normally.")
         pass
     except Exception as e:
         LOG.error(f"Handler error: {e}")
     finally:
         connected_clients.remove(websocket)
-        #LOG.info(f"Client disconnected. Total clients: {len(connected_clients)}")
+        LOG.info(f"Client disconnected. Total clients: {len(connected_clients)}")
 
 # --- メイン関数 ---
 async def main():
