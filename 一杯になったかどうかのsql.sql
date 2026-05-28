@@ -1,6 +1,5 @@
-        SELECT * FROM distancements 
-        WHERE 
-        no = 1 
-        AND savetime >= DATETIME('now','localtime', '-' || 600 || ' seconds')
-        ORDER BY 
-        savetime DESC 
+SELECT IFNULL(sum(sec), 0) AS total 
+FROM distancements 
+WHERE no = 3 
+AND dist <= 5
+AND savetime >= DATETIME('now','localtime', '-' || 10 || ' seconds')

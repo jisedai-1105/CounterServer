@@ -44,3 +44,8 @@ pip install requests
 ```bash
 pip install python-dotenv
 ```
+
+- aiosqlite
+```bash
+pip install aiosqlite
+```
