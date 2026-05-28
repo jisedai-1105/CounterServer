@@ -9,8 +9,8 @@ async def send_data():
     uri = "ws://localhost:8765"
     async with websockets.connect(uri) as websocket:
 
-        sleepVal = 0.3
-        line = 1
+        sleepVal = 0.1
+        line = 3
         
         while True:
             try:
@@ -18,9 +18,9 @@ async def send_data():
                 SendData = {"type": "dist","no": line,"dist": dist, "sec": sleepVal} # 送信するデータ
                 await websocket.send(json.dumps(SendData)) # 文字列として送信
                 print(f"Sending data: {SendData}")
-                response = await websocket.recv()
-                print(f"Server says: {response}")
-                sleep(sleepVal)
+                #response = await websocket.recv()
+                #print(f"Server says: {response}")
+                await asyncio.sleep(sleepVal)
             except websockets.exceptions.ConnectionClosed:
                 print("Connection closed by the server.")
             except Exception as e:

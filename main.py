@@ -22,11 +22,14 @@ SLACK_SEND_INTERVAL = int(os.getenv("SLACK_SEND_INTERVAL"))
 # --- ログ設定 ---
 LOG = clsLog.AppLogger(log_dir=os.getenv("LOG_DIR"), log_name=os.getenv("LOG_NAME"))
 
-# --- 接続中のクライアント情報初期化 ---
-connected_clients = set()
-
 # --- Slackへの最後の通知時間を記録する辞書 ---
 last_sent_times = {}
+
+# --- センサーからの接続を記録するセット（将来の拡張用） ---
+sensor_clients = set()
+
+# --- ブラウザからの接続を記録するセット（将来の拡張用） ---
+browser_clients = set()
 
 # --- データベース接続関数 ---
 def get_db_conn():  
@@ -75,7 +78,7 @@ async def init_db_dist():
 async def notify_update_socket_dist(No, inserted_id=""):
 
     try:
-        if not connected_clients:
+        if not browser_clients:
             return
         
         DistData = await ReceiveDistance(No,inserted_id)
@@ -93,7 +96,7 @@ async def notify_update_socket_dist(No, inserted_id=""):
         # 全クライアントに一斉送信
         # waitを使って並列に処理すると効率的です
         await asyncio.gather(
-            *[client.send(message) for client in connected_clients],
+            *[client.send(message) for client in browser_clients],
             return_exceptions=True # 一部の送信失敗で全体を止めないため
         )
 
@@ -104,7 +107,7 @@ async def notify_update_socket_dist(No, inserted_id=""):
 async def notify_update_socket_distenv(No):
 
     try:
-        if not connected_clients:
+        if not browser_clients:
             return
         
         EnvData = await GetDistanceEnv(No)
@@ -120,7 +123,7 @@ async def notify_update_socket_distenv(No):
         # 全クライアントに一斉送信
         # waitを使って並列に処理すると効率的です
         await asyncio.gather(
-            *[client.send(message) for client in connected_clients],
+            *[client.send(message) for client in browser_clients],
             return_exceptions=True # 一部の送信失敗で全体を止めないため
         )
 
@@ -178,6 +181,7 @@ async def ReceiveDistance(No, inserted_id=""):
                 IsSendMsg = await asyncio.to_thread(SendSlackMessage, f"成型機：{No} が満杯になりました。")
                 if IsSendMsg:
                     last_sent_times[No] = current_time
+                pass
 
         else:
             result = {
@@ -340,14 +344,34 @@ async def SetDistanceEnv(No, dist, sec):
 
 # --- WebSocketハンドラー関数 ---
 async def handler(websocket):
-    connected_clients.add(websocket)
+
     try:
         async for message in websocket:
+
             try:
 
                 data = json.loads(message)
                 DataType = data.get("type")
                 No = data.get("no")
+
+                ########################################
+                # クライアントの種類に応じてセットに追加
+                ########################################
+                try:
+
+                    if DataType == "dist":
+                        if websocket in sensor_clients:
+                            pass
+                        else:
+                            sensor_clients.add(websocket)
+                    else:
+                        if websocket in browser_clients:
+                            pass
+                        else:
+                            browser_clients.add(websocket)
+                except Exception as e:
+                    LOG.error(f"handler() - Error : {e}")
+                    return
 
                 ###################
                 #距離情報の受信
@@ -362,8 +386,8 @@ async def handler(websocket):
                                 "dist": dist,
                                 "sec": sec
                             }
-                    await websocket.send(json.dumps(response))
-                    await notify_update_socket_dist(No,inserted_id)  # ブラウザ更新通知
+                    #await websocket.send(json.dumps(response))
+                    asyncio.create_task(notify_update_socket_dist(No,inserted_id))  # ブラウザ更新通知
                 
                 #####################
                 #距離情報をクライアントに返す
@@ -373,7 +397,7 @@ async def handler(websocket):
                                 "type": "getdistance",
                             }
                     #await websocket.send(json.dumps(response))
-                    await notify_update_socket_dist(No)  # ブラウザ更新通知
+                    asyncio.create_task(notify_update_socket_dist(No))  # ブラウザ更新通知
 
                 ######################
                 #距離環境設定の保存
@@ -409,13 +433,20 @@ async def handler(websocket):
                 await websocket.send(json.dumps(response))
 
     except websockets.exceptions.ConnectionClosed:
-        #LOG.info("Client connection closed normally.")
+        LOG.info("Client connection closed normally.")
         pass
     except Exception as e:
         LOG.error(f"Handler error: {e}")
     finally:
-        connected_clients.remove(websocket)
-        #LOG.info(f"Client disconnected. Total clients: {len(connected_clients)}")
+        try:
+            if websocket in sensor_clients:
+                sensor_clients.remove(websocket)
+                LOG.info(f"Client disconnected. Total sensor_clients: {len(sensor_clients)}")
+            elif websocket in browser_clients:
+                browser_clients.remove(websocket)
+                LOG.info(f"Client disconnected. Total browser_clients: {len(browser_clients)}")
+        except Exception as e:
+            pass
 
 # --- メイン関数 ---
 async def main():
