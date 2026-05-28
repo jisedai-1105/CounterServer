@@ -484,7 +484,7 @@ async def handler(websocket):
                                 "dist": dist,
                                 "sec": sec
                             }
-                    #await websocket.send(json.dumps(response))
+                    await websocket.send(json.dumps(response))
                     await notify_update_socket_dist(No,inserted_id)  # ブラウザ更新通知
                 
                 #####################

@@ -4,7 +4,7 @@ import json
 from time import sleep
 
 async def send_data():
-    uri = "ws://localhost:8765"
+    uri = "ws://192.168.3.136:8765"
     async with websockets.connect(uri) as websocket:
 
         sleepVal = 0.1
