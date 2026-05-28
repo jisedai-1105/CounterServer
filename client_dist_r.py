@@ -10,7 +10,7 @@ async def send_data():
     async with websockets.connect(uri) as websocket:
 
         sleepVal = 0.3
-        line = 2
+        line = 1
         
         while True:
             try:
@@ -19,7 +19,7 @@ async def send_data():
                 await websocket.send(json.dumps(SendData)) # 文字列として送信
                 print(f"Sending data: {SendData}")
                 response = await websocket.recv()
-                #print(f"Server says: {response}")
+                print(f"Server says: {response}")
                 sleep(sleepVal)
             except websockets.exceptions.ConnectionClosed:
                 print("Connection closed by the server.")

@@ -1,7 +1,6 @@
 import asyncio
-import sqlite3
+import aiosqlite
 import datetime
-from time import sleep
 import websockets
 import json
 import clsLog
@@ -26,21 +25,51 @@ LOG = clsLog.AppLogger(log_dir=os.getenv("LOG_DIR"), log_name=os.getenv("LOG_NAM
 # --- 接続中のクライアント情報初期化 ---
 connected_clients = set()
 
-# --- DBのコネクション ---
-db_connect = None
-
 # --- Slackへの最後の通知時間を記録する辞書 ---
 last_sent_times = {}
 
-# --- DBコネクションのクローズ関数 ---
-def close_db():
-    global db_connect
+# --- データベース接続関数 ---
+def get_db_conn():  
+    """WALモードと同期モードを毎回有効にしてコネクションを返す"""
+    return aiosqlite.connect(DB_NAME)
+
+# --- データベース初期化関数(距離計測版) ---
+async def init_db_dist():
+
     try:
-        if db_connect:
-            db_connect.close()
-            db_connect = None
+
+        async with get_db_conn() as db:
+        
+            await db.execute("PRAGMA journal_mode=WAL;")
+            await db.execute("PRAGMA synchronous=NORMAL;")
+
+            await db.execute('''
+                CREATE TABLE IF NOT EXISTS distancements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    no INTEGER NOT NULL,
+                    dist REAL NOT NULL,
+                    sec REAL NOT NULL,
+                    savetime TIMESTAMP NOT NULL
+                )
+            ''')
+
+            await db.execute('''
+                CREATE TABLE IF NOT EXISTS distanceenv (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    no INTEGER NOT NULL,
+                    dist REAL NOT NULL,
+                    sec REAL NOT NULL,
+                    savetime TIMESTAMP NOT NULL
+                )
+            ''')
+
+            # クライアント増による遅延を完全に防ぐインデックスの追加
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_dist_no_time ON distancements (no, savetime);")
+            await db.commit()
+
     except Exception as e:
-        LOG.error(f"close_db() - Error: {e}")
+        LOG.error(f"init_db_dist() - Database error: {e}")
+
 
 # --- ブラウザ更新通知関数（WebSocket版） ---
 async def notify_update_socket_dist(No, inserted_id=""):
@@ -78,7 +107,7 @@ async def notify_update_socket_distenv(No):
         if not connected_clients:
             return
         
-        EnvData = await asyncio.to_thread(GetDistanceEnv, No)
+        EnvData = await GetDistanceEnv(No)
         
         # 送信するメッセージの作成
         message = json.dumps({
@@ -98,62 +127,29 @@ async def notify_update_socket_distenv(No):
     except Exception as e:
         LOG.error(f"notify_update_socket_dist() - Error: {e}")
 
-# --- データベース初期化関数(距離計測版) ---
-def init_db_dist():
-    global db_connect
-    try:
-
-        if db_connect is None:
-            db_connect = sqlite3.connect(DB_NAME, check_same_thread=False)
-
-        cursor = db_connect.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS distancements (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                no INTEGER NOT NULL,
-                dist REAL NOT NULL,
-                sec REAL NOT NULL,
-                savetime TIMESTAMP NOT NULL
-            )
-        ''')
-        db_connect.commit()
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS distanceenv (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                no INTEGER NOT NULL,
-                dist REAL NOT NULL,
-                sec REAL NOT NULL,
-                savetime TIMESTAMP NOT NULL
-            )
-        ''')
-        db_connect.commit()
-
-        # クライアント増による遅延を完全に防ぐインデックスの追加
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_dist_no_time ON distancements (no, savetime);")
-        db_connect.commit()
-
-    except Exception as e:
-        LOG.error(f"init_db_dist() - Database error: {e}")
-
 # --- データ保存関数 ---
-def save_to_db_dist(no,dist,sec):
-
-    global db_connect
+async def save_to_db_dist(no,dist,sec):
 
     inserted_id = ""
     try:
-        cursor = db_connect.cursor()
-        now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        cursor.execute(
-            "INSERT INTO distancements (no, dist, sec, savetime) VALUES (?, ?, ?, ?)",
-            (no, dist, sec, now)
-        )
-        db_connect.commit()
+        async with get_db_conn() as db:
 
-        inserted_id = cursor.lastrowid
+            now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-        LOG.info(f"Saved: id: {inserted_id}, no: {no}, dist: {dist}, sec: {sec} at {now}")
+            #LOG.info(f"Saved bef: id: ?, no: {no}, dist: {dist}, sec: {sec} at {now}")
+
+            await db.execute("PRAGMA journal_mode=WAL;")
+            await db.execute("PRAGMA synchronous=NORMAL;")
+
+            cursor = await db.execute(
+                "INSERT INTO distancements (no, dist, sec, savetime) VALUES (?, ?, ?, ?)",
+                (no, dist, sec, now)
+            )
+            await db.commit()
+            inserted_id = cursor.lastrowid
+            
+            LOG.info(f"Saved aft: id: {inserted_id}, no: {no}, dist: {dist}, sec: {sec} at {now}")
+
     except Exception as e:
         LOG.error(f"save_to_db_dist() - no: {no}, dist: {dist}, sec: {sec} - Database error: {e}")
 
@@ -161,11 +157,10 @@ def save_to_db_dist(no,dist,sec):
 
 # --- 距離情報の取得処理 ---
 async def ReceiveDistance(No, inserted_id=""):
-    global db_connect
     try:
 
-        Env, sec = await asyncio.to_thread(ReceiveDistanceDB, No)
-        latest_dist = await asyncio.to_thread(get_latest_distance, No, inserted_id)
+        Env, sec = await ReceiveDistanceDB(No)
+        latest_dist = await get_latest_distance(No, inserted_id)
 
         #LOG.info(f"READ_TIME:{READ_TIME}, env.dist:{Env['dist']}, env.sec:{Env['sec']} / total sec: {sec}")
 
@@ -199,22 +194,26 @@ async def ReceiveDistance(No, inserted_id=""):
         #raise  # 呼び出し元にエラーを伝える
 
 # --- 距離情報の取得処理 ---
-def ReceiveDistanceDB(No):
-    global db_connect
-    Env = GetDistanceEnv(No)
-    db_connect.row_factory = sqlite3.Row
-    cursor = db_connect.cursor()
-    sql = """
-        SELECT IFNULL(sum(sec), 0) AS total 
-        FROM distancements 
-        WHERE no = ? 
-        AND dist <= ?
-        AND savetime >= DATETIME('now','localtime', '-' || ? || ' seconds')
-    """
-    cursor.execute(sql, (No, Env["dist"], READ_TIME))
-    row = cursor.fetchone()
-    sec = row["total"] if row else 0
-    return Env, sec
+async def ReceiveDistanceDB(No):
+    Env = await GetDistanceEnv(No)
+
+    async with get_db_conn() as db:
+
+        await db.execute("PRAGMA journal_mode=WAL;")
+        await db.execute("PRAGMA synchronous=NORMAL;")
+
+        db.row_factory = aiosqlite.Row
+        sql = """
+            SELECT IFNULL(sum(sec), 0) AS total 
+            FROM distancements 
+            WHERE no = ? 
+            AND dist <= ?
+            AND savetime >= DATETIME('now','localtime', '-' || ? || ' seconds')
+        """
+        async with db.execute(sql, (No, Env["dist"], READ_TIME)) as cursor:
+            row = await cursor.fetchone()
+            sec = row["total"] if row else 0
+            return Env, sec
 
 # --- Slack通知関数 ---
 def SendSlackMessage(message):
@@ -225,7 +224,7 @@ def SendSlackMessage(message):
             return result
 
         payload = {"text": message}
-        response = requests.post(SLACK_WEBHOOK_URL, json=payload)
+        response = requests.post(SLACK_WEBHOOK_URL, json=payload , timeout=3)
 
         if response.status_code != 200:
             LOG.error(f"Failed to send Slack message: {response.status_code} - {response.text}")
@@ -239,90 +238,102 @@ def SendSlackMessage(message):
     return result
 
 # --- 最新の距離情報の取得関数 ---
-def get_latest_distance(No, inserted_id=""):
+async def get_latest_distance(No, inserted_id=""):
 
-    global db_connect
     try:
-        db_connect.row_factory = sqlite3.Row
-        cursor = db_connect.cursor()
 
-        if inserted_id == "":
-            sql = '''
-            SELECT * FROM distancements 
-            WHERE 
-            no = ? 
-            AND savetime >= DATETIME('now','localtime', '-' || ? || ' seconds')
-            ORDER BY 
-            savetime DESC 
-            LIMIT 1
-            '''
-            cursor.execute(sql, (No, READ_TIME))
-        else:
-            sql = '''
-            SELECT * FROM distancements 
-            WHERE 
-            id = ?
-            '''
-            cursor.execute(sql, (inserted_id,))
+        async with get_db_conn() as db:
+            db.row_factory = aiosqlite.Row
+            if inserted_id == "":
+                sql = '''
+                SELECT * FROM distancements 
+                WHERE 
+                no = ? 
+                AND savetime >= DATETIME('now','localtime', '-' || ? || ' seconds')
+                ORDER BY 
+                savetime DESC 
+                LIMIT 1
+                '''
+                params = (No, READ_TIME)
+            else:
+                sql = '''
+                SELECT * FROM distancements 
+                WHERE 
+                id = ?
+                '''
+                params = (inserted_id,)
 
-        row = cursor.fetchone()
-        Result = None
-        if row is None:
-            Result = {"dist": "---"}
-        else:
-            Result = {"dist": row["dist"]}
-        
-        return Result
+            await db.execute("PRAGMA journal_mode=WAL;")
+            await db.execute("PRAGMA synchronous=NORMAL;")
+
+            async with db.execute(sql, params) as cursor:
+                row = await cursor.fetchone()
+                Result = None
+                if row is None:
+                    Result = {"dist": "---"}
+                else:
+                    Result = {"dist": row["dist"]}
+                
+                return Result
 
     except Exception as e:
         LOG.error(f"get_latest_distance() - Database error: {e}")
         #raise  # 呼び出し元にエラーを伝える
 
 # --- 距離情報の取得処理 ---
-def GetDistanceEnv(No):
-    global db_connect
+async def GetDistanceEnv(No):
     try:
-        db_connect.row_factory = sqlite3.Row
-        cursor = db_connect.cursor()
-        sql = "SELECT dist, sec FROM distanceenv WHERE no = ?"
-        cursor.execute(sql, (No,))
-        row = cursor.fetchone()
-        if row is None:
-            result_dict = {"dist": INIT_DISTANCE, "sec": INIT_SEC}
-        else:
-            result_dict = dict(row)
+        async with get_db_conn() as db:
+ 
+            await db.execute("PRAGMA journal_mode=WAL;")
+            await db.execute("PRAGMA synchronous=NORMAL;")
 
-        return result_dict
+            db.row_factory = aiosqlite.Row
+            sql = "SELECT dist, sec FROM distanceenv WHERE no = ?"
+
+            async with db.execute(sql, (No,)) as cursor:
+                row = await cursor.fetchone()
+                if row is None:
+                    result_dict = {"dist": INIT_DISTANCE, "sec": INIT_SEC}
+                else:
+                    result_dict = dict(row)
+
+            return result_dict
 
     except Exception as e:
         LOG.error(f"GetDistanceEnv() - Database error: {e}")
         #raise  # 呼び出し元にエラーを伝える
 
 # --- 距離環境設定の保存処理 ---
-def SetDistanceEnv(No, dist, sec):
-    global db_connect
+async def SetDistanceEnv(No, dist, sec):
+
     try:
-        cursor = db_connect.cursor()
-        now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        async with get_db_conn() as db:
 
-        # 既に環境設定が存在するか確認
-        cursor.execute("SELECT id FROM distanceenv WHERE no = ?", (No,))
-        row = cursor.fetchone()
+            await db.execute("PRAGMA journal_mode=WAL;")
+            await db.execute("PRAGMA synchronous=NORMAL;")
 
-        if row is None:
-            # 存在しない場合は新規挿入
-            cursor.execute(
-                "INSERT INTO distanceenv (no, dist, sec, savetime) VALUES (?, ?, ?, ?)",
-                (No, dist, sec, now)
-            )
-        else:
-            # 存在する場合は更新
-            cursor.execute(
-                "UPDATE distanceenv SET dist = ?, sec = ?, savetime = ? WHERE no = ?",
-                (dist, sec, now, No)
-            )
+            now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-        db_connect.commit()
+            # 既に環境設定が存在するか確認
+            async with db.execute("SELECT id FROM distanceenv WHERE no = ?", (No,)) as cursor:
+                row = await cursor.fetchone()
+
+            if row is None:
+                # 存在しない場合は新規挿入
+                await db.execute(
+                    "INSERT INTO distanceenv (no, dist, sec, savetime) VALUES (?, ?, ?, ?)",
+                    (No, dist, sec, now)
+                )
+            else:
+                # 存在する場合は更新
+                await db.execute(
+                    "UPDATE distanceenv SET dist = ?, sec = ?, savetime = ? WHERE no = ?",
+                    (dist, sec, now, No)
+                )
+
+            await db.commit()
+
         LOG.info(f"SetDistanceEnv: No={No}, dist={dist}, sec={sec} at {now}")
     except Exception as e:
         LOG.error(f"SetDistanceEnv: DB error: {e}")
@@ -344,14 +355,14 @@ async def handler(websocket):
                 if DataType == "dist":
                     dist = data.get("dist")
                     sec = data.get("sec")
-                    inserted_id = await asyncio.to_thread(save_to_db_dist,No, dist, sec)
+                    inserted_id = await save_to_db_dist(No, dist, sec)
                     response = {
                                 "type": "dist",
                                 "no": No,
                                 "dist": dist,
                                 "sec": sec
                             }
-                    #await websocket.send(json.dumps(response))
+                    await websocket.send(json.dumps(response))
                     await notify_update_socket_dist(No,inserted_id)  # ブラウザ更新通知
                 
                 #####################
@@ -370,7 +381,7 @@ async def handler(websocket):
                 if DataType == "setenv":
                     dist = data.get("dist")
                     sec = data.get("sec")
-                    await asyncio.to_thread(SetDistanceEnv, No, dist, sec)
+                    await SetDistanceEnv(No, dist, sec)
                     response = {
                                 "type": "setenv",
                                 "no": No,
@@ -413,8 +424,8 @@ async def main():
     LOG.info("Server started.")
     LOG.info("■" * 20)
 
-    init_db_dist()
-    
+    await init_db_dist()
+
     # サーバーを起動し、そのオブジェクトを保持
     async with websockets.serve(handler, "0.0.0.0", PORT_NO):
 
@@ -427,8 +438,6 @@ async def main():
         except asyncio.CancelledError:
             # Ctrl+C などによるキャンセルをここでキャッチ
             LOG.info("Shutting down server.")
-
-    close_db() 
 
     LOG.info("■" * 20)
     LOG.info("Server stopped.")
@@ -460,12 +469,9 @@ if __name__ == "__main__":
         #              No , 距離 , 経過秒
         #SetDistanceEnv(1, 10.0, 5.0)
         #print(GetDistanceEnv(1))
-        
-        #close_db()
 
     except KeyboardInterrupt:
         # Ctrl+Cによるエラー出力をここで食い止める
-        close_db() 
         LOG.info("■" * 20)
         LOG.info("Server stopped.")
         LOG.info("■" * 20)
