@@ -433,7 +433,7 @@ async def handler(websocket):
                 await websocket.send(json.dumps(response))
 
     except websockets.exceptions.ConnectionClosed:
-        LOG.info("Client connection closed normally.")
+        #LOG.info("Client connection closed normally.")
         pass
     except Exception as e:
         LOG.error(f"Handler error: {e}")
@@ -441,10 +441,10 @@ async def handler(websocket):
         try:
             if websocket in sensor_clients:
                 sensor_clients.remove(websocket)
-                LOG.info(f"Client disconnected. Total sensor_clients: {len(sensor_clients)}")
+                #LOG.info(f"Client disconnected. Total sensor_clients: {len(sensor_clients)}")
             elif websocket in browser_clients:
                 browser_clients.remove(websocket)
-                LOG.info(f"Client disconnected. Total browser_clients: {len(browser_clients)}")
+                #LOG.info(f"Client disconnected. Total browser_clients: {len(browser_clients)}")
         except Exception as e:
             pass
 
