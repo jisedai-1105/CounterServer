@@ -10,19 +10,19 @@ async def send_data():
 
         sleepVal = 0.5
         
-        SendData = {"type": "dist","no": 1,"dist": 9.00, "sec": 20} # 送信するデータ
+        SendData = {"type": "dist","no": 1,"dist": 5.00, "sec": 20} # 送信するデータ
         await websocket.send(json.dumps(SendData)) # 文字列として送信
         #response = await websocket.recv()
         #print(f"Server says: {response}")
         await asyncio.sleep(sleepVal)
         
-        SendData = {"type": "dist","no": 1,"dist": 9.00, "sec": 20} # 送信するデータ
+        SendData = {"type": "dist","no": 1,"dist": 5.00, "sec": 20} # 送信するデータ
         await websocket.send(json.dumps(SendData)) # 文字列として送信
         #response = await websocket.recv()
         #print(f"Server says: {response}")
         await asyncio.sleep(sleepVal)
 
-        SendData = {"type": "dist","no": 1,"dist": 9.00, "sec": 20} # 送信するデータ
+        SendData = {"type": "dist","no": 1,"dist": 5.00, "sec": 20} # 送信するデータ
         await websocket.send(json.dumps(SendData)) # 文字列として送信
         #response = await websocket.recv()
         #print(f"Server says: {response}")

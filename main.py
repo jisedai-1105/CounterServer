@@ -31,10 +31,16 @@ sensor_clients = set()
 # --- ブラウザからの接続を記録するセット（将来の拡張用） ---
 browser_clients = set()
 
+# --- データベース名の生成関数 ---
+def create_DbName():
+    now = datetime.datetime.now()
+    result = DB_NAME.replace("YYYYMMDD", now.strftime('%Y%m%d'))
+    return result
+
 # --- データベース接続関数 ---
 def get_db_conn():  
     """WALモードと同期モードを毎回有効にしてコネクションを返す"""
-    return aiosqlite.connect(DB_NAME)
+    return aiosqlite.connect(create_DbName())
 
 # --- データベース初期化関数(距離計測版) ---
 async def init_db_dist():
@@ -480,6 +486,7 @@ if __name__ == "__main__":
         asyncio.run(main())
 
         #デバッグ用 ----------------------
+        #print(create_DbName())
         #カウンターのリセット
         #reset_counter() 
         #カウントの追加
