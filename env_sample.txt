@@ -1,4 +1,4 @@
-DB_NAME = "data_store.db"
+DB_NAME = "./DB/data_store_YYYYMMDD.db"
 PORT_NO = 8765
 LOG_DIR = "./app"
 LOG_NAME = "server.log"
