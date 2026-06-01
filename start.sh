@@ -14,7 +14,7 @@ cd /home/user01/jisedai/CounterServer/web
 # 当ファイルを修正したら以下を実行
 # sudo systemctl restart jisedai_app.service
 
-# 安全装置をクリア
+# エラー発生時のエラーに対する安全装置をクリア
 # sudo systemctl reset-failed jisedai_app.service
 
 # サービスを止めたい場合
