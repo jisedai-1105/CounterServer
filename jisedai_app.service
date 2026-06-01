@@ -1,0 +1,12 @@
+Description=Jisedai Flask App Service
+After=network.target
+
+[Service]
+Type=simple
+User=user01
+WorkingDirectory=/home/user01/Jisedai
+ExecStart=/bin/bash /home/user01/jisedai/CounterServer/start.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
