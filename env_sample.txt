@@ -14,3 +14,16 @@ INIT_SEC = 5.0
 # SlackのWebhook URL
 SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/*************"
 SLACK_SEND_INTERVAL = 60   # Slackへの通知の最小間隔（秒）
+
+# 成型機の名前
+LINE1='EVA01'
+LINE2='EVA02'
+LINE3='EVA03'
+LINE4='EVA04'
+LINE5='EVA05'
+LINE6='EVA06'
+LINE7='EVA07'
+LINE8='EVA08'
+LINE9='EVA09'
+LINE10='EVA10'
+
