@@ -5,16 +5,19 @@
         .LineContener {
             display:flex;
             flex-direction: column;
-            width: 400px;
+            width: 380px;
         }
         .form-label {
             font-size: 1.5em
         }
         .form-counter {
+            display:flex;
             font-size: 6em;
             margin-bottom: 10px;
             border: 1px solid #000;
-            text-align: center;
+            justify-content: center;
+            align-items: center;
+            height: 150px;
         }
         .btn-container {
             text-align: center;
@@ -40,7 +43,8 @@
             font-size: 1.3em;
             text-align: center;
             gap: 5px;
-            margin-top: 10px;
+            margin-top: 0px;
+            margin-bottom: 20px;
         }
         .inp-env {
             font-size: 1.3em;
@@ -53,15 +57,25 @@
             font-size: 1.0em;
             width: 80px;
         }
+        .title {
+            font-size: 3.0em;
+            text-align: left;
+        }
+        .subtitle {
+            font-size: 1.5em;
+            text-align: left;
+            margin-bottom: 20px;
+        }
 
     </style>
     <div style="padding:20px;">
-        <h2>Distance</h2>
+        <div class="title">距離計測</div>
+        <div class="subtitle">Distance</div>
         <div class="flex">
 
             {% for id in range(1, LINE_MAX + 1) %}
             <div class="LineContener">
-                <div class="form-label">レーン：{{ id }}</div>
+                <div class="form-label" id="form-label-{{ id }}"></div>
                 <div id="cntdisp-{{ id }}" class="form-counter">---</div>
                 <div class="btn-container">
                     <button class="btn-btn" onclick="DistUpdate({{ id }})">Update</button>
@@ -93,6 +107,7 @@
                 DistUpdate({{ id }});
                 EnvUpdate({{ id }});
             {% endfor %}
+            LineNameUpdate();
         };
 
         // WebSocketの受信設定
@@ -133,6 +148,19 @@
                         timeInput.value = sec;
                     }
                 }
+
+                // 成型機の名前リストの取得
+                if (data.type === 'LineList') {
+                    const lineList = data.LineList;
+                    console.log(`成型機の名前リストの更新: ${JSON.stringify(lineList)}`);
+                    lineList.forEach((line, index) => {
+                        const labelElement = document.getElementById(`form-label-${index + 1}`);
+                        if (labelElement) {
+                            labelElement.textContent = line.LineName;
+                        }
+                    });
+                }
+
             } catch (error) {
                 console.error('JSON解析エラー:', error);
             }
@@ -152,7 +180,7 @@
         }
 
         //------------------------------
-        // サーバにWebSocketで環境設定を送信する
+        // サーバにWebSocketで環境設定の取得を要求する
         //------------------------------
         function EnvUpdate(No) {
             if (WebSocketObj.readyState === WebSocket.OPEN) {
@@ -167,6 +195,9 @@
             }
         }
 
+        //------------------------------
+        // サーバにWebSocketで環境設定を送信する
+        //------------------------------
         function SetEnv(No) {
             const distInput = document.getElementById(`dist-input-${No}`);
             const timeInput = document.getElementById(`time-input-${No}`);
@@ -188,6 +219,19 @@
                 }
             } else {
                 console.error("距離と時間の入力値が正しくありません。");
+            }
+        }
+
+        //------------------------------
+        // サーバにWebSocketで成型機の名前リストの取得を要求
+        //------------------------------
+        function LineNameUpdate() {
+            if (WebSocketObj.readyState === WebSocket.OPEN) {
+                const data = { 
+                    type: "getLineList", 
+                };
+                WebSocketObj.send(JSON.stringify(data));
+                console.log("成型機の名前リスト取得コマンドを送信しました。");
             }
         }
 

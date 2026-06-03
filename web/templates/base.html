@@ -6,12 +6,17 @@
     <title>次世代開発 = Counter Viewer =</title>
     <style>
         /* 簡単な2カラムレイアウトのCSS */
-        body { display: flex; margin: 0; min-height: 100vh; font-family: sans-serif; }
-        
+        body { 
+            display: flex; margin: 0; min-height: 100vh; font-family: sans-serif; 
+            font-family: "BIZ UDPMincho", "MS PMincho", "Yu Mincho", YuMincho, serif;
+        }
+         
         /* 左側のサイドバー */
         .sidebar {
-            width: 200px;
-            background-color: #333;
+            width: 150px;
+            flex-shrink: 0;
+            /* background-color: #333; */
+            background: linear-gradient(-225deg, #2CD8D5 0%, #C5C1FF 56%, #FFBAC3 100%);
             color: white;
             padding: 20px;
         }
@@ -28,7 +33,7 @@
 </head>
 <body>
     <div class="sidebar">
-        <h2>Counter Viewer</h2>
+        <h2>Distance Viewer</h2>
         <a href="{{ url_for('home') }}">Home</a>
         <a href="{{ url_for('counter') }}">Distance</a>
     </div>

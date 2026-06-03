@@ -31,6 +31,32 @@ sensor_clients = set()
 # --- ブラウザからの接続を記録するセット（将来の拡張用） ---
 browser_clients = set()
 
+# --- ライン番号からライン名を取得する関数 ---
+def GetLineName(line_no):
+    line_name = os.getenv(f"LINE{line_no}")
+    return line_name if line_name is not None else line_no
+
+# --- ラインリストの生成関数 ---
+def CreateLineList():
+    line_list = []
+    line_no = 1
+    while True:
+        # 環境変数から LINE1, LINE2... の値を取得
+        line_name = os.getenv(f"LINE{line_no}")
+
+        # 値が取得できなかった（Noneだった）場合はループを終了
+        if line_name is None:
+            break
+
+        # 指定された形式の辞書を作成してリストに追加
+        line_data = {"Linno": line_no, "LineName": line_name}
+        line_list.append(line_data)
+
+        # 次のライン番号へ
+        line_no += 1
+
+    return line_list
+
 # --- データベース名の生成関数 ---
 def create_DbName():
     now = datetime.datetime.now()
@@ -38,16 +64,25 @@ def create_DbName():
     return result
 
 # --- データベース接続関数 ---
-def get_db_conn():  
-    """WALモードと同期モードを毎回有効にしてコネクションを返す"""
-    return aiosqlite.connect(create_DbName())
+async def get_db_conn():  
+    db_name = create_DbName()
+    if not os.path.exists(db_name):
+        await init_db_dist()
+    return aiosqlite.connect(db_name)
+
+# --- データベース接続関数(初期化用) ---
+async def get_db_conn_init():
+    db_name = create_DbName()
+    return aiosqlite.connect(db_name)
 
 # --- データベース初期化関数(距離計測版) ---
 async def init_db_dist():
 
     try:
 
-        async with get_db_conn() as db:
+        conn = await get_db_conn_init()
+
+        async with conn as db:
         
             await db.execute("PRAGMA journal_mode=WAL;")
             await db.execute("PRAGMA synchronous=NORMAL;")
@@ -141,7 +176,8 @@ async def save_to_db_dist(no,dist,sec):
 
     inserted_id = ""
     try:
-        async with get_db_conn() as db:
+        conn = await get_db_conn()
+        async with conn as db:
 
             now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
@@ -184,9 +220,10 @@ async def ReceiveDistance(No, inserted_id=""):
             # Slackへの通知の制御
             current_time = datetime.datetime.now()
             if No not in last_sent_times or (current_time - last_sent_times[No]).seconds >= SLACK_SEND_INTERVAL:
-                IsSendMsg = await asyncio.to_thread(SendSlackMessage, f"成型機：{No} が満杯になりました。")
-                if IsSendMsg:
-                    last_sent_times[No] = current_time
+                last_sent_times[No] = current_time
+                IsSendMsg = await asyncio.to_thread(SendSlackMessage, f"成型機：{GetLineName(No)} が満杯になりました。")
+                if not IsSendMsg:
+                    del last_sent_times[No]
                 pass
 
         else:
@@ -205,9 +242,10 @@ async def ReceiveDistance(No, inserted_id=""):
 
 # --- 距離情報の取得処理 ---
 async def ReceiveDistanceDB(No):
-    Env = await GetDistanceEnv(No)
 
-    async with get_db_conn() as db:
+    Env = await GetDistanceEnv(No)
+    conn = await get_db_conn()
+    async with conn as db:
 
         await db.execute("PRAGMA journal_mode=WAL;")
         await db.execute("PRAGMA synchronous=NORMAL;")
@@ -252,7 +290,9 @@ async def get_latest_distance(No, inserted_id=""):
 
     try:
 
-        async with get_db_conn() as db:
+        conn = await get_db_conn()
+
+        async with conn as db:
             db.row_factory = aiosqlite.Row
             if inserted_id == "":
                 sql = '''
@@ -293,7 +333,8 @@ async def get_latest_distance(No, inserted_id=""):
 # --- 距離情報の取得処理 ---
 async def GetDistanceEnv(No):
     try:
-        async with get_db_conn() as db:
+        conn = await get_db_conn()
+        async with conn as db:
  
             await db.execute("PRAGMA journal_mode=WAL;")
             await db.execute("PRAGMA synchronous=NORMAL;")
@@ -318,7 +359,8 @@ async def GetDistanceEnv(No):
 async def SetDistanceEnv(No, dist, sec):
 
     try:
-        async with get_db_conn() as db:
+        conn = await get_db_conn()
+        async with conn as db:
 
             await db.execute("PRAGMA journal_mode=WAL;")
             await db.execute("PRAGMA synchronous=NORMAL;")
@@ -364,7 +406,6 @@ async def handler(websocket):
                 # クライアントの種類に応じてセットに追加
                 ########################################
                 try:
-
                     if DataType == "dist":
                         if websocket in sensor_clients:
                             pass
@@ -430,6 +471,18 @@ async def handler(websocket):
                                 "no": No,
                             }
                     #await websocket.send(json.dumps(response))
+                
+
+                #######################
+                #ラインリストの取得
+                #######################
+                if DataType == "getLineList":
+                    LineList = CreateLineList()
+                    response = {
+                                "type": "LineList",
+                                "LineList": LineList,
+                            }
+                    await websocket.send(json.dumps(response))
 
             except (ValueError, TypeError):
                 response = {
@@ -486,6 +539,10 @@ if __name__ == "__main__":
         asyncio.run(main())
 
         #デバッグ用 ----------------------
+
+        #json_output = json.dumps(CreateLineList(), ensure_ascii=False, indent=4)
+        #print(json_output)
+
         #print(create_DbName())
         #カウンターのリセット
         #reset_counter() 

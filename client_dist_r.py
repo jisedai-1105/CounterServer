@@ -9,7 +9,7 @@ async def send_data():
     uri = "ws://localhost:8765"
     async with websockets.connect(uri) as websocket:
 
-        sleepVal = 0.1
+        sleepVal = 1.0
         line = 3
         
         while True:
