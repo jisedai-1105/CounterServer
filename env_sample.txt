@@ -1,4 +1,5 @@
 DB_NAME = "./DB/data_store_YYYYMMDD.db"
+DB_NAME_ENV = "./DB/data_env.db"
 PORT_NO = 8765
 LOG_DIR = "./app"
 LOG_NAME = "server.log"

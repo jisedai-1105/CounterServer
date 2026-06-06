@@ -12,6 +12,7 @@ load_dotenv()
 
 # --- データベース設定 ---
 DB_NAME = os.getenv("DB_NAME")
+DB_NAME_ENV = os.getenv("DB_NAME_ENV")
 PORT_NO = int(os.getenv("PORT_NO"))
 READ_TIME = int(os.getenv("READ_TIME"))
 INIT_DISTANCE = float(os.getenv("INIT_DISTANCE"))
@@ -70,9 +71,21 @@ async def get_db_conn():
         await init_db_dist()
     return aiosqlite.connect(db_name)
 
+# --- データベース接続関数（設定DB用） ---
+async def get_db_conn_env():  
+    db_name = DB_NAME_ENV
+    if not os.path.exists(db_name):
+        await init_db_dist_env()
+    return aiosqlite.connect(db_name)
+
 # --- データベース接続関数(初期化用) ---
 async def get_db_conn_init():
     db_name = create_DbName()
+    return aiosqlite.connect(db_name)
+
+# --- データベース接続関数(設定DB　初期化用) ---
+async def get_db_conn_init_env():
+    db_name = DB_NAME_ENV
     return aiosqlite.connect(db_name)
 
 # --- データベース初期化関数(距離計測版) ---
@@ -97,6 +110,25 @@ async def init_db_dist():
                 )
             ''')
 
+            # クライアント増による遅延を完全に防ぐインデックスの追加
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_dist_no_time ON distancements (no, savetime);")
+            await db.commit()
+
+    except Exception as e:
+        LOG.error(f"init_db_dist() - Database error: {e}")
+
+# --- データベース初期化関数(距離計測版) ---
+async def init_db_dist_env():
+
+    try:
+
+        conn = await get_db_conn_init_env()
+
+        async with conn as db:
+        
+            await db.execute("PRAGMA journal_mode=WAL;")
+            await db.execute("PRAGMA synchronous=NORMAL;")
+
             await db.execute('''
                 CREATE TABLE IF NOT EXISTS distanceenv (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,12 +139,10 @@ async def init_db_dist():
                 )
             ''')
 
-            # クライアント増による遅延を完全に防ぐインデックスの追加
-            await db.execute("CREATE INDEX IF NOT EXISTS idx_dist_no_time ON distancements (no, savetime);")
             await db.commit()
 
     except Exception as e:
-        LOG.error(f"init_db_dist() - Database error: {e}")
+        LOG.error(f"init_db_dist_env() - Database error: {e}")
 
 
 # --- ブラウザ更新通知関数（WebSocket版） ---
@@ -333,7 +363,7 @@ async def get_latest_distance(No, inserted_id=""):
 # --- 距離情報の取得処理 ---
 async def GetDistanceEnv(No):
     try:
-        conn = await get_db_conn()
+        conn = await get_db_conn_env()
         async with conn as db:
  
             await db.execute("PRAGMA journal_mode=WAL;")
@@ -359,7 +389,7 @@ async def GetDistanceEnv(No):
 async def SetDistanceEnv(No, dist, sec):
 
     try:
-        conn = await get_db_conn()
+        conn = await get_db_conn_env()
         async with conn as db:
 
             await db.execute("PRAGMA journal_mode=WAL;")
@@ -515,6 +545,7 @@ async def main():
     LOG.info("■" * 20)
 
     await init_db_dist()
+    await init_db_dist_env()
 
     # サーバーを起動し、そのオブジェクトを保持
     async with websockets.serve(handler, "0.0.0.0", PORT_NO):
