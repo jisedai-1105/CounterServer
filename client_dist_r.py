@@ -10,11 +10,11 @@ async def send_data():
     async with websockets.connect(uri) as websocket:
 
         sleepVal = 1.0
-        line = 3
+        line = 1
         
         while True:
             try:
-                dist = random.randint(10, 20)
+                dist = random.randint(10, 13)
                 SendData = {"type": "dist","no": line,"dist": dist, "sec": sleepVal} # 送信するデータ
                 await websocket.send(json.dumps(SendData)) # 文字列として送信
                 print(f"Sending data: {SendData}")
