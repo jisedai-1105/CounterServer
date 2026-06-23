@@ -139,6 +139,8 @@ async def init_db_dist_env():
                 )
             ''')
 
+            await db.commit()
+
             await db.execute('''
                 CREATE TABLE IF NOT EXISTS resetdistance (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
