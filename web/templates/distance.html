@@ -50,7 +50,7 @@
             font-size: 1.3em;
             padding: 5px;
             margin-right: 15px;
-            width: 50px;
+            width: 65px;
             text-align: right;
         }
         .btn-setenv {
@@ -201,7 +201,7 @@
         function SetEnv(No) {
             const distInput = document.getElementById(`dist-input-${No}`);
             const timeInput = document.getElementById(`time-input-${No}`);
-            const distValue = distInput ? parseInt(distInput.value) : null;
+            const distValue = distInput ? parseFloat(distInput.value) : null;
             const timeValue = timeInput ? parseInt(timeInput.value) : null;
 
             if (distValue !== null && timeValue !== null) {
