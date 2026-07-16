@@ -684,7 +684,7 @@ async def handler(websocket):
 async def main():
 
     LOG.info("■" * 30)
-    LOG.info("Server(ver 1.10) started.")
+    LOG.info("Server(ver 1.20) started.")
     LOG.info("■" * 30)
 
     await init_db_dist()
