@@ -44,6 +44,13 @@
             text-align: center;
             gap: 5px;
             margin-top: 0px;
+            margin-bottom: 5px;
+        }
+        .env-container-stype {
+            font-size: 1.3em;
+            text-align: left;
+            gap: 5px;
+            margin-top: 0px;
             margin-bottom: 20px;
         }
         .inp-env {
@@ -56,6 +63,14 @@
         .btn-setenv {
             font-size: 1.0em;
             width: 80px;
+        }
+        .stype-env {
+            font-size: 1.0em;
+            width: 150px;
+        }
+        .alert-env {
+            font-size: 1.0em;
+            width: 160px;
         }
         .title {
             font-size: 3.0em;
@@ -85,6 +100,17 @@
                     秒：<input class="inp-env" type="number" min="1" max="60" id="time-input-{{ id }}" placeholder="" onfocus="this.select()">
                     <button class="btn-setenv" onclick="SetEnv({{ id }})">Set</button>
                 </div>
+                <div class="env-container-stype">
+                    <select class="stype-env" id="stype_{{id}}">  
+                        <option value="0">堆積モード</option>
+                        <option value="1">通過モード</option>
+                    </select>
+                    <select class="alert-env" id="alert_{{id}}">  
+                        <option value="0">アラート OFF</option>
+                        <option value="1">アラート ON</option>
+                    </select>
+                </div>
+
             </div>
             {% endfor %}
 
@@ -139,14 +165,20 @@
                     const no = data.no; 
                     const dist = data.dist;
                     const sec = data.sec;
+                    const stype = data.stype;
+                    const alert = data.alert;
                     
-                    console.log(`環境設定の更新: 'No': ${no}, 'dist': ${dist}, 'sec': ${sec}`);
+                    console.log(`環境設定の更新: 'No': ${no}, 'dist': ${dist}, 'sec': ${sec} , 'stype': ${stype}, 'alert': ${alert}`);
+
                     const distInput = document.getElementById(`dist-input-${no}`);
                     const timeInput = document.getElementById(`time-input-${no}`);
-                    if (distInput && timeInput) {
-                        distInput.value = dist;
-                        timeInput.value = sec;
-                    }
+                    const stypeInput = document.getElementById(`stype_${no}`);
+                    const alertInput = document.getElementById(`alert_${no}`);
+                    distInput.value = dist;
+                    timeInput.value = sec;
+                    stypeInput.value = stype;
+                    alertInput.value = alert;
+
                 }
 
                 // 成型機の名前リストの取得
@@ -203,6 +235,8 @@
             const timeInput = document.getElementById(`time-input-${No}`);
             const distValue = distInput ? parseFloat(distInput.value) : null;
             const timeValue = timeInput ? parseInt(timeInput.value) : null;
+            const stypeValue = document.getElementById(`stype_${No}`).value;
+            const alertValue = document.getElementById(`alert_${No}`).value;
 
             if (distValue !== null && timeValue !== null) {
                 if (WebSocketObj.readyState === WebSocket.OPEN) {
@@ -210,7 +244,9 @@
                         type: "setenv", 
                         no: No, 
                         dist: distValue, 
-                        sec: timeValue 
+                        sec: timeValue,
+                        stype: stypeValue,
+                        alert: alertValue
                     };
                     WebSocketObj.send(JSON.stringify(data));
                     console.log("環境設定送信コマンドを送信しました。");

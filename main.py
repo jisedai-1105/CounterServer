@@ -17,6 +17,8 @@ PORT_NO = int(os.getenv("PORT_NO"))
 READ_TIME = int(os.getenv("READ_TIME"))
 INIT_DISTANCE = float(os.getenv("INIT_DISTANCE"))
 INIT_SEC = float(os.getenv("INIT_SEC"))
+INIT_STYPE = int(os.getenv("INIT_STYPE"))
+INIT_ALERT = int(os.getenv("INIT_ALERT"))
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 SLACK_SEND_INTERVAL = int(os.getenv("SLACK_SEND_INTERVAL"))
 
@@ -135,6 +137,8 @@ async def init_db_dist_env():
                     no INTEGER NOT NULL,
                     dist REAL NOT NULL,
                     sec REAL NOT NULL,
+                    stype INTEGER NOT NULL,
+                    alert INTEGER NOT NULL,
                     savetime TIMESTAMP NOT NULL
                 )
             ''')
@@ -199,7 +203,9 @@ async def notify_update_socket_distenv(No):
             "type": "distenv",
             "no": No,
             "dist": EnvData["dist"],
-            "sec": EnvData["sec"]
+            "sec": EnvData["sec"],
+            "stype": EnvData["stype"],
+            "alert": EnvData["alert"]
         })
 
         # 全クライアントに一斉送信
@@ -254,12 +260,24 @@ async def ReceiveDistance(No, inserted_id=""):
 
         try :
             
-            # 距離のリセットを有効にするための計算
-            if latest_dist["dist"] == "---":
-                setDist = 0 - float(RstDist["dist"])
+            if int(Env["stype"]) == 0:
+            # 堆積モードの場合
+
+                # 距離のリセットを有効にするための計算
+                if latest_dist["dist"] == "---":
+                    setDist = 0 
+                else:
+                    setDist = float(latest_dist["dist"])
+
             else:
-                setDist = float(latest_dist["dist"]) - float(RstDist["dist"])
-            setDist = abs(setDist)
+            # 通過モードの場合
+
+                # 距離のリセットを有効にするための計算
+                if latest_dist["dist"] == "---":
+                    setDist = 0 - float(RstDist["dist"])
+                else:
+                    setDist = float(latest_dist["dist"]) - float(RstDist["dist"])
+                setDist = abs(setDist)
 
         except Exception as e:
             LOG.error(f"ReceiveDistance() - SetDist Error")
@@ -275,13 +293,19 @@ async def ReceiveDistance(No, inserted_id=""):
             }
 
             # Slackへの通知の制御
-            current_time = datetime.datetime.now()
-            if No not in last_sent_times or (current_time - last_sent_times[No]).seconds >= SLACK_SEND_INTERVAL:
-                last_sent_times[No] = current_time
-                IsSendMsg = await asyncio.to_thread(SendSlackMessage, f"成型機：{GetLineName(No)} が満杯になりました。")
-                if not IsSendMsg:
-                    del last_sent_times[No]
-                pass
+            if Env["alert"] == 1:  # アラートが有効な場合のみ通知
+                current_time = datetime.datetime.now()
+                if No not in last_sent_times or (current_time - last_sent_times[No]).seconds >= SLACK_SEND_INTERVAL:
+                    last_sent_times[No] = current_time
+
+                    if Env["stype"] == 0:
+                        msgsub = f"成型機：{GetLineName(No)} が満杯になりました。"
+                    else:
+                        msgsub = f"成型機：{GetLineName(No)} で製品が通過しました。"
+
+                    IsSendMsg = await asyncio.to_thread(SendSlackMessage, msgsub)
+                    if not IsSendMsg:
+                        del last_sent_times[No]
 
         else:
             result = {
@@ -307,6 +331,7 @@ async def ReceiveDistanceDB(No):
 
     Env = await GetDistanceEnv(No)
     conn = await get_db_conn()
+
     async with conn as db:
 
         await db.execute("PRAGMA journal_mode=WAL;")
@@ -314,33 +339,38 @@ async def ReceiveDistanceDB(No):
 
         db.row_factory = aiosqlite.Row
 
-        # 距離リセット版 #################################################################
-        sql = """
+        if int(Env["stype"]) == 0:
+
+            # 通常版 #######################################################################
+            # ※引数の数が違うので注意
+            sql = """
             SELECT IFNULL(sum(sec), 0) AS total 
             FROM distancements 
             WHERE no = ? 
-            AND abs(dist - ?) >= ?
+            AND dist <= ?
             AND savetime >= DATETIME('now','localtime', '-' || ? || ' seconds')
-        """
-        ################################################################################
+            """
+            ###############################################################################
+            async with db.execute(sql, (No , Env["dist"], READ_TIME)) as cursor:
+                row = await cursor.fetchone()
+                sec = row["total"] if row else 0
+                return Env, sec
+        else:
+            # 距離リセット版 #################################################################
+            sql = """
+                SELECT IFNULL(sum(sec), 0) AS total 
+                FROM distancements 
+                WHERE no = ? 
+                AND abs(dist - ?) >= ?
+                AND savetime >= DATETIME('now','localtime', '-' || ? || ' seconds')
+            """
+            ################################################################################
+            async with db.execute(sql, (No , DistRst["dist"], Env["dist"], READ_TIME)) as cursor:
+                row = await cursor.fetchone()
+                sec = row["total"] if row else 0
 
-        # 通常版 #######################################################################
-        #
-        # ※引数の数が違うので注意
-        #
-        # sql = """
-        #   SELECT IFNULL(sum(sec), 0) AS total 
-        #   FROM distancements 
-        #   WHERE no = ? 
-        #   AND dist <= ?
-        #   AND savetime >= DATETIME('now','localtime', '-' || ? || ' seconds')
-        #"""
-        ###############################################################################
+        return Env, sec
 
-        async with db.execute(sql, (No , DistRst["dist"], Env["dist"], READ_TIME)) as cursor:
-            row = await cursor.fetchone()
-            sec = row["total"] if row else 0
-            return Env, sec
 
 # --- Slack通知関数 ---
 def SendSlackMessage(message):
@@ -419,12 +449,12 @@ async def GetDistanceEnv(No):
             await db.execute("PRAGMA synchronous=NORMAL;")
 
             db.row_factory = aiosqlite.Row
-            sql = "SELECT dist, sec FROM distanceenv WHERE no = ?"
+            sql = "SELECT dist, sec , stype, alert FROM distanceenv WHERE no = ?"
 
             async with db.execute(sql, (No,)) as cursor:
                 row = await cursor.fetchone()
                 if row is None:
-                    result_dict = {"dist": INIT_DISTANCE, "sec": INIT_SEC}
+                    result_dict = {"dist": INIT_DISTANCE, "sec": INIT_SEC, "stype": INIT_STYPE, "alert": INIT_ALERT}
                 else:
                     result_dict = dict(row)
 
@@ -435,7 +465,7 @@ async def GetDistanceEnv(No):
         #raise  # 呼び出し元にエラーを伝える
 
 # --- 距離環境設定の保存処理 ---
-async def SetDistanceEnv(No, dist, sec):
+async def SetDistanceEnv(No, dist, sec, stype, alert):
 
     try:
         conn = await get_db_conn_env()
@@ -453,19 +483,19 @@ async def SetDistanceEnv(No, dist, sec):
             if row is None:
                 # 存在しない場合は新規挿入
                 await db.execute(
-                    "INSERT INTO distanceenv (no, dist, sec, savetime) VALUES (?, ?, ?, ?)",
-                    (No, dist, sec, now)
+                    "INSERT INTO distanceenv (no, dist, sec, savetime, stype, alert) VALUES (?, ?, ?, ?, ?, ?)",
+                    (No, dist, sec, now, stype, alert)
                 )
             else:
                 # 存在する場合は更新
                 await db.execute(
-                    "UPDATE distanceenv SET dist = ?, sec = ?, savetime = ? WHERE no = ?",
-                    (dist, sec, now, No)
+                    "UPDATE distanceenv SET dist = ?, sec = ?, savetime = ?, stype = ?, alert = ? WHERE no = ?",
+                    (dist, sec, now, stype, alert, No)
                 )
 
             await db.commit()
 
-        LOG.info(f"SetDistanceEnv: No={No}, dist={dist}, sec={sec} at {now}")
+        LOG.info(f"SetDistanceEnv: No={No}, dist={dist}, sec={sec}, stype={stype}, alert={alert} at {now}")
     except Exception as e:
         LOG.error(f"SetDistanceEnv: DB error: {e}")
 
@@ -605,26 +635,16 @@ async def handler(websocket):
                 if DataType == "setenv":
                     dist = data.get("dist")
                     sec = data.get("sec")
-                    await SetDistanceEnv(No, dist, sec)
-                    response = {
-                                "type": "setenv",
-                                "no": No,
-                                "dist": dist,
-                                "sec": sec,
-                            }
-                    await websocket.send(json.dumps(response))
+                    stype = data.get("stype")
+                    alert = data.get("alert")
+                    await SetDistanceEnv(No, dist, sec, stype, alert)
+                    asyncio.create_task(notify_update_socket_distenv(No))  # ブラウザ更新通知
                 
                 #######################
                 #距離環境設定の取得
                 #######################
                 if DataType == "getenv":
                     await notify_update_socket_distenv(No)  # ブラウザ更新通知
-                    response = {
-                                "type": "getenv",
-                                "no": No,
-                            }
-                    #await websocket.send(json.dumps(response))
-                
 
                 #######################
                 #ラインリストの取得

@@ -8,12 +8,17 @@ LOG_NAME = "server.log"
 # 現時刻よりこの時間だけ前のデータを参照する
 READ_TIME = 10
 
-# 距離と経過秒の初期値
-INIT_DISTANCE = 15.0
+# 計測距離の初期値
+INIT_DISTANCE = 10.0
+# 計測秒の初期値
 INIT_SEC = 5.0
+# 計測タイプの初期値 0:堆積／1:通過
+INIT_STYPE = 0
+# 計測アラートの初期値 0:アラートなし／1:アラートあり
+INIT_ALERT = 0
 
 # SlackのWebhook URL
-SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/*************"
+SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/****************"
 SLACK_SEND_INTERVAL = 60   # Slackへの通知の最小間隔（秒）
 
 # 成型機の名前
